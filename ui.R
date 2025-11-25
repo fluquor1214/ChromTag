@@ -4,20 +4,20 @@ ui <- dashboardPage(
     title = shiny::tags$a(img(
       src = "logo6.png", height = 50
     )),
-    titleWidth = 250
+    titleWidth = 265
   ),
   sidebar = shinydashboard::dashboardSidebar(
-    width=250,
+    width=265,
     sidebarMenu(
       id="menuitem",
       menuItem("Home Module", tabName = "home", icon = icon("home")),
-      menuItem("Peaks Visualization", tabName = "step1", icon = icon("chart-area")), 
-      menuItem("Filter And Group", tabName = "step2", icon = icon("filter")), 
-      menuItem("Differential Peak Detection", tabName = "step3", icon = icon("search")), 
-      menuItem("Gene Annotation", tabName = "step4", icon = icon("edit")),
-      menuItem("Differential Results Visualization", tabName = "step5", icon = icon("chart-bar")), 
-      menuItem("Enrichment Analysis", tabName = "step6", icon = icon("sitemap")), 
-      menuItem("Motif Enrichment Analysis", tabName = "step7", icon = icon("dna")), 
+      menuItem("Peaks Visualization Module", tabName = "step1", icon = icon("chart-area")), 
+      menuItem("Data Filtering and Grouping Module", tabName = "step2", icon = icon("filter")), 
+      menuItem("Differential Peak Analysis Module", tabName = "step3", icon = icon("search")), 
+      menuItem("Differential Peak Annotation Module", tabName = "step4", icon = icon("edit")),
+      menuItem("Differential Peak Visualization Module", tabName = "step5", icon = icon("chart-bar")), 
+      menuItem("Functional Enrichment Module", tabName = "step6", icon = icon("sitemap")), 
+      menuItem("Motif Enrichment Module", tabName = "step7", icon = icon("dna")), 
       menuItem("Help", tabName = "help", icon = icon("question-circle")),
       menuItem("About", tabName = "about", icon = icon("info-circle"))
       
@@ -39,21 +39,18 @@ ui <- dashboardPage(
     ),
     shiny::tags$head(
       shiny::tags$style(HTML("
-      /* 修改未选中标签的背景颜色 */
       .nav-tabs > li > a {
-        background-color: #F1F1F1;  /* 设置未选择标签的背景颜色为灰色 */
-        color: #888;  /* 设置未选择标签的文字颜色为灰色 */
+        background-color: #F1F1F1;
+        color: #888;
       }
 
-      /* 修改选中标签的颜色 */
       .nav-tabs > li.active > a {
-        background-color: #4CAF50;  /* 选中的标签背景颜色 */
-        color: white;  /* 选中的标签文字颜色 */
+        background-color: #4CAF50;
+        color: white;
       }
 
-      /* 修改标签栏的边框颜色 */
       .nav-tabs {
-        border-bottom: 2px solid #4CAF50;  /* 改变边框颜色 */
+        border-bottom: 2px solid #4CAF50;
       }
     "))
     ),
@@ -65,37 +62,37 @@ ui <- dashboardPage(
             font-size: 13px
     }
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step1'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
     }
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step2'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
     }
 
 
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step3'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
       }
 
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step4'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
       }
 
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step5'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
       }
 
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step6'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
     }
     
     .skin-blue .main-sidebar .sidebar-menu > li > a[data-value='step7'] {
-            color: #b1b1b1; /* 灰色 */
+            color: #b1b1b1;
             font-size: 13px
     }
 
@@ -110,22 +107,20 @@ ui <- dashboardPage(
 
     .skin-blue .main-sidebar {
         position: fixed;
-        width: 250px;
+        width: 265px;
       }
 
-    .skin-blue .sidebar {        #侧边栏与标题栏的距离
+    .skin-blue .sidebar {      
         position: fixed;
         top: 50px;
         bottom: 0;
-        width:250px;
+        width:265px;
     }
 
-
-      /*固定标题*/
     .skin-blue .main-header .logo{
         position: fixed;
         height: 50px;
-        width: 250px;
+        width: 265px;
         
       }
     .skin-blue .navbar-static-top {
@@ -170,7 +165,7 @@ ui <- dashboardPage(
             solidHeader = F,
             status = "primary",
             collapsible = TRUE,
-            selectInput("Selectdata", label = ("Data source："), choices = list("Example Data","Custom Data"), selected = "Example Data"),
+            selectInput("Selectdata", label = ("Data Source："), choices = list("Example dataset","Upload data"), selected = "Example dataset"),
             uiOutput("Selectspecies"),
             uiOutput("FileInputs"),
             div(
@@ -192,20 +187,17 @@ ui <- dashboardPage(
             status = "primary",
             collapsible = TRUE,
             div(
+              code("The Home Module"),
+              " serves as the entry point of ",
               code("ChromTag"),
-              "is a user-friendly, interactive, and open-source R-Shiny application for the analysis and visualization of",  
-              code("CUT&Tag and ChIP-seq data"),  
-              ". It streamlines data processing, from peak visualization and filtering to",  
-              code("differential peak detection"),  
-              ", gene annotation, and enrichment analysis. Users can upload a pre-merged peak count matrix and explore various analysis modules with just a few clicks. The application offers multiple visualization tools, including chromosome coverage plots, heatmaps, and volcano plots, making data interpretation more intuitive. Additionally, motif enrichment analysis helps",  
-              code("identify potential regulatory elements linked to differentially enriched peaks"),  
-              ". ",  
-              code("Chromtag"),  
-              " provides a comprehensive and accessible solution for researchers studying chromatin modifications and transcriptional regulation.",  
-              style = "font-size:16px;font-style:calibri;color:black;",
+              ", providing an integrated interface for initializing data input and establishing the foundation for subsequent analyses. Users may choose to begin with the ",
+              code("system-provided example dataset"),
+              " or ",
+              code("upload custom peak count matrices"),
+              " that have been pre-merged across samples. This module also manages species selection and displays an immediate preview of the imported dataset, enabling users to verify data structure and completeness before progressing to downstream analytical modules. Together, these components ensure that the analysis pipeline begins with properly formatted and biologically consistent input data, thereby supporting accurate and reliable interpretation in later stages.",
+              style = "font-size:15px;font-style:calibri;color:black;",
               align = "justify"
             )
-            
           ),
           shinydashboard::box(
             title = tagList(icon("table"), "Data Preview"),
@@ -231,24 +223,48 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Peaks Visualization"), 
-                " module displays the distribution of ",  
-                strong("peaks"),  
-                " across the genome. It includes the ",  
-                strong("Chromosome Coverage Plot"),  
-                " for visualizing peak coverage along chromosomes and the ",  
-                strong("Profile Plot"),  
-                " for showing read distribution around promoter regions. Users can select samples, define regions, and generate plots to explore peak data efficiently. ",  
-                strong("This step can be skipped if peak distribution analysis is not required."),  
+                strong("The Peaks Visualization Module"),
+                " provides an overview of genome-wide peak distribution patterns, offering initial insights into global chromatin accessibility or histone modification profiles. By enabling users to assign distinct colors to individual samples, the module facilitates clear visual differentiation across experimental conditions. Two complementary visualization modes are supported: the ",
+                strong("Chromosome Coverage Plot"),
+                ", which illustrates peak density along chromosomal coordinates, and the ",
+                strong("TSS Profile Plot"),
+                ", which highlights signal enrichment patterns around transcription start sites. These visual summaries allow users to assess sample consistency, identify broad regulatory trends, and detect potential differences in chromatin states prior to formal statistical analysis. As an exploratory component of the workflow, this module helps contextualize downstream findings and enhances the interpretability of differential and functional analyses.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
             )
           ),
           shinydashboard::box(
+            title = tagList(icon("palette"), "Assign Sample Colors"),
+            width = 12,
+            solidHeader = FALSE,
+            status = "primary",
+            collapsible = TRUE,
+            fluidRow(
+              column(
+                width = 4,
+                selectInput("color_sample", "Sample:", choices = NULL)
+              ),
+              column(
+                width = 4,
+                uiOutput("color_picker_ui")
+              ),
+              column(
+                width = 4,
+                br(),
+                actionButton(
+                  inputId = "step10",
+                  label = "Submit",
+                  icon = icon("check")
+                )
+              )
+            ),
+            verbatimTextOutput("color_submit_print")
+          ),
+          shinydashboard::box(
             title = tagList(icon("table"), "Chromosome Coverage Plot"),
             width = 12,
-            solidHeader = F,
+            solidHeader = FALSE,
             status = "primary",
             collapsible = TRUE,
             fluidRow(
@@ -256,13 +272,11 @@ ui <- dashboardPage(
                      fluidRow(
                        column(
                          12,
-                         selectizeInput("weightCol1", "Select Sample:", choices = NULL, 
+                         selectizeInput("weightCol1", "Select Sample(s):", choices = NULL, 
                                         multiple = TRUE,
-                                        options = list(
-                                          plugins = list("remove_button")  # 启用 "remove_button" 插件
-                                        )),
+                                        options = list(plugins = list("remove_button"))),
                          selectInput("chrs", "Select Chromosome:", choices = NULL),
-                         actionButton("step11", "Submit", icon = icon("check"))
+                         actionButton("step11", "Plot", icon = icon("check"))
                        )),
                      fluidRow(
                        column(
@@ -282,14 +296,14 @@ ui <- dashboardPage(
                      )
               ),
               column(9,
-                     uiOutput("covplot"),# %>% withSpinner(),
+                     uiOutput("covplot") # %>% withSpinner()
               )
             )
           ),
           shinydashboard::box(
-            title = tagList(icon("table"), "Profile Plot"),
+            title = tagList(icon("table"), "TSS Profile Plot"),
             width = 12,
-            solidHeader = F,
+            solidHeader = FALSE,
             status = "primary",
             collapsible = TRUE,
             fluidRow(
@@ -297,14 +311,12 @@ ui <- dashboardPage(
                      fluidRow(
                        column(
                          12,
-                         selectizeInput("weightCol2", "Select Sample:", choices = NULL, 
+                         selectizeInput("weightCol2", "Select Sample(s):", choices = NULL, 
                                         multiple = TRUE,
-                                        options = list(
-                                          plugins = list("remove_button")  
-                                        )),
+                                        options = list(plugins = list("remove_button"))),
                          numericInput("upstream", "Upstream (bp):", value = 3000),
                          numericInput("downstream", "Downstream (bp):", value = 3000),
-                         actionButton("step12", "Submit", icon = icon("check"))
+                         actionButton("step12", "Plot", icon = icon("check"))
                        )),
                      fluidRow(
                        column(
@@ -324,7 +336,7 @@ ui <- dashboardPage(
                      )
               ),
               column(9,
-                     uiOutput("profileplot"),# %>% withSpinner(),
+                     uiOutput("profileplot") #  %>% withSpinner()
               )
             )
           )
@@ -341,14 +353,12 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Filter and Group module"), 
-                " allows for data refinement and sample organization before downstream analysis. The ",  
-                strong("filtering step"),  
-                " removes low-count peaks based on a user-defined threshold, ensuring that only peaks with sufficient read support are retained. The ",  
-                strong("grouping step"),  
-                " enables the assignment of selected samples into user-defined groups for comparative analysis. Users can preview data before and after filtering, adjust the count threshold, create and modify sample groups, and proceed with structured comparisons, ensuring a well-organized dataset for ",  
-                strong("differential analysis"),  
-                ".",  
+                strong("The Data Filtering and Grouping Module"),
+                " provides essential preprocessing steps to ensure that downstream analyses are performed on high-quality and well-structured data. The ",
+                strong("filtering component"),
+                " removes peaks with insufficient read support based on a user-defined count cutoff, reducing noise and retaining only those genomic regions with reliable signal intensity. The grouping component allows users to assign selected samples into ",
+                strong("biologically meaningful groups"),
+                ", forming the basis for subsequent differential analysis. Together, these steps help establish a clean and well-organized dataset, facilitating accurate comparison across experimental conditions and improving the overall robustness of downstream computational analyses.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -357,17 +367,17 @@ ui <- dashboardPage(
           shinydashboard::tabBox(
             title = tagList(icon("table"), "Data Preview"),
             width = 12,
-            selected = "Before Filter",
+            selected = "Before Filtering",
             side = "right",
             tabsetPanel(
               id = "datapreview",
               tabPanel(
-                tagList("Before Filter"),
+                tagList("Before Filtering"),
                 fluidRow(
                   column(3,
                          div(
                            style = "display:inline-block; vertical-align:middle;",
-                           shiny::tags$strong("Count Threshold:")
+                           shiny::tags$strong("Count Cutoff:")
                          ),
                          div(
                            style = "display:inline-block; vertical-align:middle; margin-left:5px;",
@@ -390,7 +400,7 @@ ui <- dashboardPage(
                 )
               ),
               tabPanel(
-                tagList("After Filter"),
+                tagList("After Filtering"),
                 fluidRow(column(12,
                                 DT::dataTableOutput("dataPreviewstep22"),
                                 downloadButton("Downloadafterfilter", "Download")
@@ -408,14 +418,14 @@ ui <- dashboardPage(
             collapsible = TRUE,
             selectizeInput(
               inputId = "samples", 
-              label = "Select Samples:", 
+              label = "Select Sample(s):", 
               choices = NULL, 
               multiple = TRUE,
               options = list(
-                plugins = list("remove_button")  # 启用移除按钮插件
+                plugins = list("remove_button")
               )
             ),
-            textInput("groupName", "Group Name:", value = ""),
+            textInput("groupName", "Group Label:", value = ""),
             actionButton("addGroup", "Add Group"),
             actionButton("clearGroups", "Clear Groups"),
             hr(),
@@ -440,93 +450,41 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Differential Peak Detection module"), 
-                " identifies significant changes in peak intensity between different sample groups. Users can specify statistical parameters such as the ",  
-                strong("alternative hypothesis, significance level, log2 fold change threshold, and p-value adjustment method"),  
-                " to refine the analysis. The module supports comparisons between two or more groups, automatically performing differential analysis and generating results in an interactive table. Significant peaks can be filtered based on user-defined thresholds, ensuring that only biologically relevant differences are retained for downstream analysis.",  
+                strong("The Differential Peak Analysis Module"),
+                " performs statistical testing to detect significant differences in peak signal intensity across defined sample groups. Users may tailor the analysis by specifying parameters such as the direction of change, log₂ fold-change cutoff, significance threshold, and p-value adjustment method. The module supports both pairwise and multi-group comparisons, applying model-based differential testing and presenting the results in an interactive tabular format. Following statistical computation, additional user-defined filters can be applied to highlight the most ",
+                strong("biologically meaningful peaks"),
+                ", facilitating focused downstream interpretation and functional analysis.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
-              )
-            ),
-            div(
-              style = "text-align: center;",
-              actionButton(
-                inputId = "step31",
-                label = "Run Differential Analysis",
-                icon = icon("play"),
-                style = "width: 50%;background-color: #6aa7a6; color: white;"
-              ),
-              div(
-                id = "loading",
-                style = "display: none;",
-                h3("Running differential analysis... Please wait."),
-                withSpinner(uiOutput("progressUI"))
               )
             )
           ),
           shinydashboard::box(
-            title = tagList(icon("mouse-pointer"), "Select Analysis Results Parameters"),
+            title = tagList(icon("mouse-pointer"), "Differential Analysis Parameters"),
             width = 12,
-            solidHeader = F,
+            solidHeader = FALSE,
             status = "primary",
             collapsible = TRUE,
-            fluidRow(column(4,
-                            selectInput(
-                              inputId = "altHypothesis",
-                              label = "Choose Alternative Hypothesis for Differential Expression:",
-                              choices = list(
-                                "Detect Upregulated Genes" = "greater",
-                                "Detect Downregulated Genes" = "less",
-                                "Detect Significant Changes (up or down)" = "greaterAbs"
-                              ),
-                              selected = "greaterAbs"
-                              # width = "100%"
-                            )),
-                     column(2,
-                            radioButtons(
-                              inputId = "independentFiltering",
-                              label = "Apply Independent Filtering for Low Expression Genes",
-                              choices = list("Yes" = TRUE, "No" = FALSE),
-                              selected = FALSE,  # Default option
-                              inline = TRUE  # Make it appear in a row
-                            )
-                     ),
-                     column(2,
-                            numericInput(
-                              inputId = "alpha",
-                              label = "Set Significance Level:",
-                              value = 0.01,
-                              min = 0,
-                              max = 1,
-                              step = 0.01
-                            )),
-                     column(2,
-                            numericInput(
-                              inputId = "lfcThreshold",
-                              label = "Set Log2 Fold Change Threshold:",
-                              value = 0,
-                              min = 0,
-                              max = 10
-                            )),
-                     column(2,
-                            selectInput(
-                              inputId = "pAdjustMethod",
-                              label = "Select p-value Adjustment Method:",
-                              choices = c("BH" = "BH", "Holm" = "holm"),
-                              selected = "BH",
-                              width = "100%"
-                            )),
-                     column(12,
-                            div(
-                              style = "text-align: center;",
-                              actionButton(
-                                inputId = "step312",
-                                label = "Submit",
-                                icon = icon("check")
-                                # class = "btn-primary",
-                                # style = "color: white;"
-                              )
-                            ))
+            fluidRow(
+              uiOutput("differential_Parameters")
+            ),
+            fluidRow(
+              column(12,
+                     div(
+                       style = "text-align: center;",
+                       actionButton(
+                         inputId = "step31",
+                         label = "Run Differential Analysis",
+                         icon = icon("play"),
+                         style = "width: 50%;background-color: #6aa7a6; color: white;"
+                       ),
+                       div(
+                         id = "loading",
+                         style = "display: none;",
+                         h3("Running differential analysis... Please wait."),
+                         withSpinner(uiOutput("progressUI"))
+                       )
+                     ))
             )
           ),
           uiOutput("dynamic_tabs_step3")
@@ -544,16 +502,18 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Gene Annotation module"),  
-                " assigns peaks to nearby genes and provides functional insights into their potential regulatory roles. Users can define ",  
-                strong("upstream and downstream distances"),  
-                " to determine the genomic regions considered for annotation. The module generates an ",  
-                strong("annotation table"),  
-                " linking peaks to genes and offers multiple visualization options, including ",  
-                strong("pie charts, bar charts, distance-to-TSS plots, and upset plots"),  
-                ", to summarize peak distributions. This analysis helps identify ",  
-                strong("gene-associated regulatory elements"),  
-                " and aids in understanding their potential impact on gene expression.",  
+                strong("The Differential Peak Annotation Module"),
+                " annotates differential peaks by mapping them to nearby genes based on user-defined upstream and downstream distances. After running the annotation, results are displayed in an interactive table and summarized through multiple visualization panels, including ",
+                strong("pie plots"),
+                ", ",
+                strong("bar plots"),
+                ", ",
+                strong("Distance-to-TSS plots"),
+                ", and ",
+                strong("UpSet plots"),
+                ". These outputs provide an overview of how annotated peaks are distributed across genomic features and help users explore ",
+                strong("potential regulatory associations"),
+                " between peaks and genes.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -573,14 +533,14 @@ ui <- dashboardPage(
               style = "text-align: center;",
               actionButton(
                 inputId = "step4",
-                label = "Run Gene Annotation",
+                label = "Run Peak Annotation",
                 icon = icon("play"),
                 style = "width: 50%;background-color: #6aa7a6; color: white;"
               )
             )
           ),
           shinydashboard::box(
-            title = tagList(icon("table"), "Annotation Table"),
+            title = tagList(icon("table"), "Peak Annotation Table"),
             width = 12,
             solidHeader = F,
             status = "primary",
@@ -592,14 +552,14 @@ ui <- dashboardPage(
             )  
           ),
           shinydashboard::tabBox(
-            title = tagList(icon("chart-column"), "Gene Annotation Visualization"),
+            title = tagList(icon("chart-column"), "Annotation Visualization"),
             width = 12,
-            selected = "Annotation Pie Chart",
+            selected = "Annotation Pie Plot",
             side = "right",
             tabsetPanel(id = "annotationplot",
-                        # Annotation Pie Chart Tab
+                        # Annotation Pie Plot Tab
                         tabPanel(
-                          tagList(icon("chart-pie"), "Annotation Pie Chart"),
+                          tagList(icon("chart-pie"), "Annotation Pie Plot"),
                           fluidRow(
                             column(3,
                                    fluidRow(column(
@@ -623,9 +583,9 @@ ui <- dashboardPage(
                             )
                           )
                         ),
-                        # Annotation Bar Chart Tab
+                        # Annotation Bar Plot Tab
                         tabPanel(
-                          tagList(icon("chart-bar"), "Annotation Bar Chart"),
+                          tagList(icon("chart-bar"), "Annotation Bar Plot"),
                           fluidRow(
                             column(3,
                                    fluidRow(column(
@@ -649,9 +609,9 @@ ui <- dashboardPage(
                             )
                           )
                         ),
-                        # Distance to TSS Tab
+                        # Distance to TSS Plot Tab
                         tabPanel(
-                          tagList(icon("chart-line"), "Distance to TSS"),
+                          tagList(icon("chart-line"), "Distance to TSS Plot"),
                           fluidRow(
                             column(3,
                                    fluidRow(column(
@@ -716,18 +676,16 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Differential Results Visualization module"),  
-                " provides multiple plotting tools to explore and interpret differential peak analysis results. Users can generate a ",  
-                strong("Volcano Plot"),  
-                " to identify and ",  
-                strong("filter"),  
-                " significantly enriched peaks for further analysis, with the filtered peaks available in the gene tables below. Additional visualizations include an ",  
-                strong("MA Plot"),  
-                " to assess fold changes relative to expression levels, a ",  
-                strong("PCA Plot"),  
-                " to evaluate sample clustering, and a ",  
-                strong("Heatmap"),  
-                " to compare peak distributions across samples. Adjustable parameters allow fine-tuning of significance thresholds, fold change cutoffs, and visualization settings, ensuring flexible and comprehensive data exploration.",  
+                strong("The Differential Peak Visualization Module"),
+                " offers a set of interactive plots that help users examine and interpret the outcomes of differential peak analysis. The ",
+                strong("Volcano Plot"),
+                " allows users to highlight and filter significantly enriched peaks, with the corresponding upregulated and downregulated gene lists displayed below for downstream analysis. Additional visualizations include the ",
+                strong("MA Plot"),
+                ", which summarizes fold-change patterns relative to average signal intensity, the ",
+                strong("PCA Plot"),
+                " for assessing sample clustering, and a ",
+                strong("Heatmap"),
+                " that compares peak signal profiles across samples. Adjustable parameters enable users to fine-tune significance thresholds, fold-change cutoffs, and display settings, providing a flexible and comprehensive framework for exploring differential chromatin signals.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -742,7 +700,7 @@ ui <- dashboardPage(
                               content = paste(
                                 "• By adjusting the volcano plot parameters, you can filter the significant genes (displayed as red points) you wish to analyze, then submit your selection. <br><br>",
                                 "• The volcano plot shows genes that are significantly different between the two groups or selected comparisons. The title of the volcano plot indicates which groups are being compared (e.g., Group1 vs Group2). <br><br>",
-                                "• Genes located further from the origin (with larger absolute log2FC and lower p-values) are considered more significant. Genes to the right of the origin have higher expression in the first group, and genes to the left have higher expression in the second group. <br><br>"
+                                "• Genes located further from the origin (with larger absolute log2FC and lower p-values) are considered more significant. Peaks with a log2FC greater than 0 have higher expression in the second group, while peaks with a log2FC less than 0 have higher expression in the first group. <br><br>"
                               ),
                               placement = "right", 
                               trigger = "hover", 
@@ -759,9 +717,9 @@ ui <- dashboardPage(
                           fluidRow(
                             column(3,
                                    fluidRow(column(12,
-                                                   numericInput("pCutoff", "-log10(p) Cutoff", value = 2),
-                                                   numericInput("FCcutoff2", "Positive Log2 FC Threshold", value = 14),
-                                                   numericInput("FCcutoff1", "Negative Log2 FC Threshold", value = 5),
+                                                   numericInput("pCutoff", "–log10(p-value) Cutoff", value = 2),
+                                                   numericInput("FCcutoff2", "Log2FC Threshold (Positive)", value = 14),
+                                                   numericInput("FCcutoff1", "Log2FC Threshold (Negative)", value = 5),
                                                    numericInput("pointSize", "Point Size", value = 3.0),
                                                    numericInput("labSize", "Label Size", value = 4.0),
                                                    actionButton(
@@ -792,7 +750,7 @@ ui <- dashboardPage(
                                    fluidRow(column(12,
                                                    numericInput("size", "Label Size", value = 3),
                                                    numericInput("boxPadding", "Box Padding", value = 0.5),
-                                                   numericInput("maxOverlaps", "Max Overlaps", value = 10),
+                                                   numericInput("maxOverlaps", "Maximum Overlaps", value = 10),
                                                    numericInput("topUpGenes", "Top Upregulated Genes", value = 5),
                                                    numericInput("topDownGenes", "Top Downregulated Genes", value = 5),
                                                    br(),
@@ -922,16 +880,16 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Enrichment Analysis"), 
-                " module identifies significantly enriched ",  
-                strong("biological pathways and functions"),  
-                " based on user-defined gene lists. It supports ",  
-                strong("GO, KEGG, and GSEA analyses"),  
-                ", allowing users to specify analysis parameters, adjust p-value and q-value thresholds, and input upregulated and downregulated gene lists. The module automatically performs enrichment analysis and presents results not only in ",  
-                strong("interactive tables"),  
-                " but also through ",  
-                strong("visualization plots"),  
-                " for better interpretation. Users can refine gene selections, customize analysis settings, and utilize dynamic visualizations to gain functional insights into their data.",  
+                strong("The Functional Enrichment Module"),
+                " identifies ",
+                strong("biological pathways and functional categories"),
+                " associated with user-defined gene sets. It supports ",
+                strong("GO"),
+                ", ",
+                strong("KEGG"),
+                ", and ",
+                strong("GSEA"),
+                " analyses, allowing users to configure ontology or gene-set options, apply p-value and q-value thresholds, and use upregulated or downregulated gene lists derived from differential analysis. After running the analysis, results are presented in interactive tables and complemented by multiple visualization plots to facilitate interpretation. Users may adjust gene selections, modify analysis parameters, and explore dynamic visual outputs to obtain functional insights into the regulatory mechanisms reflected in their data.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -1002,7 +960,7 @@ ui <- dashboardPage(
                      condition = "input.analysis_type == 'GSEA'",
                      textAreaInput(
                        "GSEA_genelist",
-                       "Up and Down Genes List",
+                       "Upregulated and Downregulated Gene Lists",
                        rows = 10
                      )
                    )
@@ -1031,14 +989,12 @@ ui <- dashboardPage(
             collapsible = TRUE,
             helpText(
               div(
-                strong("The Motif Enrichment Analysis"), 
-                " module performs motif analysis on the top 200 differentially enriched peaks, selected from the volcano plot filtering step. Users can input and modify ",  
-                strong("upregulated and downregulated peak lists"),  
-                ", and the analysis identifies enriched transcription factor binding motifs. Results are presented in ",  
-                strong("interactive tables"),  
-                " and ",  
-                strong("visualization plots"),  
-                " such as heatmaps, with options to adjust the number of top transcription factors, enable clustering, and display motif GC content. The results can be downloaded for further analysis, offering insights into potential regulatory elements affecting gene expression.",  
+                strong("The Motif Enrichment Module"),
+                " identifies ",
+                strong("transcription factor binding motifs"),
+                " enriched within user-defined sets of upregulated and downregulated peaks. Users may input or modify peak sets, adjust the number of top transcription factors to display, and optionally enable motif clustering or show GC-content information. After running the analysis, results are presented in interactive tables and ",
+                strong("motif heatmaps"),
+                " summarizing enriched transcription factor motifs for each peak set. All outputs can be downloaded for further exploration, providing insights into potential regulatory mechanisms associated with differential chromatin regions.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -1054,14 +1010,14 @@ ui <- dashboardPage(
               column(4,
                      textAreaInput(
                        "upgenes_list3",
-                       "Upregulated Peaks List",
+                       "Upregulated Peak Set",
                        rows = 10
                      )
               ),
               column(4,
                      textAreaInput(
                        "downgenes_list3",
-                       "Downregulated Peaks List",
+                       "Downregulated Peak Set",
                        rows = 10
                      )
               ),
@@ -1074,13 +1030,13 @@ ui <- dashboardPage(
                      ),
                      radioButtons(
                        inputId = "show_motif_GC",
-                       label = "Display Motif GC Content",
+                       label = "Show Motif GC Content",
                        choices = c("Yes" = TRUE, "No" = FALSE),
                        selected = TRUE
                      ),
                      radioButtons(
                        inputId = "enable_clustering",
-                       label = "Enable Clustering",
+                       label = "Enable TF Clustering",
                        choices = c("Yes" = TRUE, "No" = FALSE),
                        selected = TRUE
                      )
@@ -1098,7 +1054,7 @@ ui <- dashboardPage(
           ),
           shinydashboard::box(
             title = tagList(
-              icon("table"), "Upregulated Peaks Motif Enrichment Table",
+              icon("table"), "Motif Enrichment Table (Upregulated Peaks)",
               bsButton("motifhelp1", label = "", icon = icon("question"), size = "extra-small"),
               bsPopover(
                 id = "motifhelp1", 
@@ -1129,7 +1085,7 @@ ui <- dashboardPage(
             )  
           ),
           shinydashboard::box(
-            title = tagList(icon("table"), "Downregulated Peaks Motif Enrichment Table",
+            title = tagList(icon("table"), "Motif Enrichment Table (Downregulated Peaks)",
                             bsButton("motifhelp2", label = "", icon = icon("question"), size = "extra-small"),
                             bsPopover(
                               id = "motifhelp2", 
@@ -1167,7 +1123,7 @@ ui <- dashboardPage(
             fluidRow(
               column(3,
                      div(
-                       h4("Upregulated Peaks"),
+                       h6("Motif Heatmap(Upregulated Peak Set)"),
                        style = "background-color: #6aa7a6; color: white; padding: 0px 3px; border-radius: 10px; display: inline-block;"
                      ),
                      br(),
@@ -1181,7 +1137,7 @@ ui <- dashboardPage(
               ),
               column(3,
                      div(
-                       h4("Downregulated Peaks"),
+                       h6("Motif Heatmap(Downregulated Peak Set)"),
                        style = "background-color: #6aa7a6; color: white; padding: 0px 3px; border-radius: 10px; display: inline-block;"
                      ),
                      br(),
@@ -1218,7 +1174,19 @@ ui <- dashboardPage(
             width = 12,
             solidHeader = F,
             status = "primary",
-            collapsible = TRUE
+            collapsible = TRUE,
+            HTML(paste0(
+              "<p style = ' font-size:17.5px; color: black;'>",
+              "<b>Contact</b>",
+              "<br>If you have any technical or collaboration needs, please contact:",
+              "<br>Siwen Xu (siwxu@gdpu.edu.cn)",
+              "<br>Qingyan Zou (1040624480@qq.com)",
+              "</p>",
+              "<br><p style = ' font-size:17.5px; color: black;'>",
+              "<b>Code Availability</b>",
+              "<br>The source code for ChromTag can be found in ","<a  href = 'https://github.com/fluquor1214/ChromTag' target='_blank'>this</a>"," repository.",
+              "</p>"
+            ))
           )
         )
       )
@@ -1230,17 +1198,15 @@ ui <- dashboardPage(
       HTML(paste0(
         "</br><p style = 'text-align: center; font-size: 1.0em; color: black; line-height: 10%;'>",
         "<b>Created by</b>: XuLabGDPU | ",
-        "<b>Last update</b>: 14/04/2025",
+        "<b>Last update</b>: 30/11/2025",
         "</p>",
         "</br><p style = 'text-align: center; font-size: 1.0em; color: black; line-height: 10%;'>",
         "<b>Address</b>: No. 280, Outer Ring East Road, Panyu District, Guangzhou City, Guangdong Province, China | ",
         "<b>Postcode</b>: 511400",
         "</p>",
         "</br><p style = 'text-align: center; font-size:1.0em; line-height: 10%;'> ",
-        "<a  href = 'https://www.xulabgdpu.org.cn' target='_blank'>XuLabGDPU</a> | ",
-        "<a  href = 'https://www.xulabgdpu.org.cn/signacShiny' target='_blank'>ShinySignac.UiO</a> | ",
-        "<a  href = 'https://www.gdpu.edu.cn/' target='_blank'>Guangdong Pharmaceutical University</a> | ",
-        "<a href='https://beian.miit.gov.cn/' target='_blank'>黑ICP备2024016624</a>",
+        "<a  href = 'https://github.com/fluquor1214/ChromTag' target='_blank'>Github</a> | ",
+        "<a  href = 'https://www.xulabgdpu.org.cn' target='_blank'>XuLabGDPU</a>",
         "</p>"
       )),
       div(

@@ -1,10 +1,23 @@
 set.seed(1234)
 server <- function(input, output, session) {
+  
+  example_data_dir <- "sample.csv"
+  cache_dir <- "extdata/"
+  insects_pwms_dir <- "extdata/insects_pwms.rds"
+  vertebrates_pwms_dir <- "extdata/vertebrates_pwms.rds"
+  up_sinse_rds_dir <- "extdata/up_sinse.rds"
+  down_sinse_rds_dir <- "extdata/down_sinse.rds"
+  
   values <- reactiveValues(
     peakAnnoReady = FALSE,
     DVReady = FALSE
   )
-  #清缓存
+  values <- reactiveValues(
+    coveragePlots = list(),
+    profilePlots = list(),
+    color_map_list = list()
+  )
+
   session$onSessionEnded(function() {
     custom_cache_files <- list.files(cache_dir, pattern = "^custom_cache_.*\\.rds$", full.names = TRUE)
     if (length(custom_cache_files) > 0) {
@@ -13,7 +26,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$Selectdata, {
-    if (input$Selectdata != "Custom Data") {
+    if (input$Selectdata != "Upload data") {
       custom_cache_files <- list.files(cache_dir, pattern = "^custom_cache_.*\\.rds$", full.names = TRUE)
       if (length(custom_cache_files) > 0) {
         file.remove(custom_cache_files)
@@ -22,7 +35,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$file, {
-    if (input$Selectdata == "Custom Data") {
+    if (input$Selectdata == "Upload data") {
       custom_cache_files <- list.files(cache_dir, pattern = "^custom_cache_.*\\.rds$", full.names = TRUE)
       if (length(custom_cache_files) > 0) {
         file.remove(custom_cache_files)
@@ -38,7 +51,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$Selectdata, {
-    if (input$Selectdata != "Custom Data") {
+    if (input$Selectdata != "Upload data") {
       custom_cache_files <- list.files(cache_dir, pattern = "^profilePlots_custom_cache_.*\\.rds$", full.names = TRUE)
       if (length(custom_cache_files) > 0) {
         file.remove(custom_cache_files)
@@ -47,7 +60,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$file, {
-    if (input$Selectdata == "Custom Data") {
+    if (input$Selectdata == "Upload data") {
       custom_cache_files <- list.files(cache_dir, pattern = "^profilePlots_custom_cache_.*\\.rds$", full.names = TRUE)
       if (length(custom_cache_files) > 0) {
         file.remove(custom_cache_files)
@@ -63,7 +76,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$Selectdata, {
-    if (input$Selectdata != "Custom Data") {
+    if (input$Selectdata != "Upload data") {
       sinse_cache_files <- list.files(cache_dir, pattern = "_sinse_.*\\.rds$", full.names = TRUE)
       if (length(sinse_cache_files) > 0) {
         file.remove(sinse_cache_files)
@@ -72,7 +85,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$file, {
-    if (input$Selectdata == "Custom Data") {
+    if (input$Selectdata == "Upload data") {
       sinse_cache_files <- list.files(cache_dir, pattern = "_sinse_.*\\.rds$", full.names = TRUE)
       if (length(sinse_cache_files) > 0) {
         file.remove(sinse_cache_files)
@@ -81,18 +94,11 @@ server <- function(input, output, session) {
   })
   
   values <- reactiveValues(data = NULL)
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step1']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step2']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step3']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step4']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step5']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step6']")
-  # shinyjs::disable(selector = ".sidebar li a[data-value='step7']")
   
+  shinyjs::disable("step10")
   shinyjs::disable("step11")
   shinyjs::disable("step12")
   shinyjs::disable("step21")
-  shinyjs::disable("step312")
   shinyjs::disable("step2_to_step3")
   shinyjs::disable("step32")
   shinyjs::disable("step31")
@@ -101,16 +107,36 @@ server <- function(input, output, session) {
   shinyjs::disable("step6")
   shinyjs::disable("step7")
   
-  # —————————————— 上传文件 ——————————————
+  # ————————————————————————————
+  observe({
+    if (input$Selectdata == "Upload data" && is.null(input$file)) {
+      shinyjs::disable("import")
+    } else {
+      shinyjs::enable("import")
+      shinyjs::removeClass("import", "disabled")
+    }
+  })
+  # ————————————————————————————
   observeEvent(input$Selectdata, {
-    if (input$Selectdata == "Custom Data") {
+    if (input$Selectdata == "Upload data") {
       output$FileInputs <- renderUI({
         tagList(
           fileInput(
             "file", 
-            "Choose a File in CSV Format", 
+            "Upload CSV File", 
             accept = c(".csv"),
             width = "100%"
+          ),
+          div(
+            "Upload a ",
+            code("CSV file"),
+            "with ",
+            code("genomic regions"),
+            "(chromosome, start, end) and ",
+            code("read counts"),
+            " for each sample. Ensure all samples share the same reference genome and species.",
+            style = "font-size:15px;font-style:calibri;color:black;",
+            align = "justify"
           )
         )
       })
@@ -118,7 +144,7 @@ server <- function(input, output, session) {
         tagList(
           selectInput(
             "species", 
-            "Choose Species", 
+            "Select Species：", 
             choices = c("Human", "Mouse", "Drosophila"),
             multiple = FALSE,
             selected = "Human",
@@ -152,8 +178,10 @@ server <- function(input, output, session) {
                 searchHighlight = TRUE,
                 scrollX = TRUE,
                 FixedHeader = T
-              ))
+              )
+            )
           })
+          
         }, error = function(e) {
           sendSweetAlert(
             session = session,
@@ -164,18 +192,19 @@ server <- function(input, output, session) {
         })
       })
       
-    } else if (input$Selectdata == "Example Data") {
+    } else if (input$Selectdata == "Example dataset") {
       output$FileInputs <- renderUI({
         tagList(
           output$FileInputs <- renderUI({
             tagList(
               div(
-                "A ", code("CSV file"), 
-                "with merged peaks and sample count data is required. The first three columns should specify the chromosome, start, and end positions, followed by count values for each sample. Each group must have at least", 
-                code("two biological replicates"), 
-                ". Peaks should be pre-merged across all samples for consistency. The provided dataset includes H3K27me3 and H3K4me3 count data, each with", 
+                "The example dataset includes CUT&Tag profiles for",
+                code("H3K27me3"),
+                "and",
+                code("H3K4me3"),
+                "from human samples (GSE145187). Each mark contains",
                 code("two biological replicates"),
-                ". Uploaded data can be previewed in the table below.",
+                ", and the peaks have been pre-processed into a merged count matrix ready for analysis. You can load this dataset to explore the features and workflow of ChromTag without uploading your own files. ",
                 style = "font-size:15px;font-style:calibri;color:black;",
                 align = "justify"
               )
@@ -211,7 +240,8 @@ server <- function(input, output, session) {
               searchHighlight = TRUE,
               scrollX = TRUE,
               FixedHeader = T
-            ))
+            )
+          )
         })
       }, error = function(e) {
         sendSweetAlert(
@@ -223,12 +253,11 @@ server <- function(input, output, session) {
       })
     }
   })
-  
-  #物种数据库
+
   observeEvent(input$import, {
     if (length(input$species) == 1) {
       
-      if (input$Selectdata == "Custom Data") {
+      if (input$Selectdata == "Upload data") {
         step12_txdb <- switch(input$species,
                               "Human" = TxDb.Hsapiens.UCSC.hg19.knownGene,
                               "Mouse" = TxDb.Mmusculus.UCSC.mm10.knownGene,
@@ -260,8 +289,7 @@ server <- function(input, output, session) {
         values$Organism <- Organism
         values$BSgenome <- BSgenome
       }
-      # 数据来源
-    } else if (input$Selectdata == "Example Data") {
+    } else if (input$Selectdata == "Example dataset") {
       values$annoDb <- "org.Hs.eg.db"
       values$txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
       values$step12_txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
@@ -270,8 +298,7 @@ server <- function(input, output, session) {
     }
     
   })
-  
-  #禁用按钮
+
   observeEvent(input$import, {
     shinyjs::enable(selector = ".sidebar li a[data-value='step1']")
     js.1 <- '
@@ -339,10 +366,10 @@ server <- function(input, output, session) {
       '
     shinyjs::runjs(js.7)
   })
-  
-  # 跳转到 step1 页面,按钮的id为import
+
   observeEvent(input$import, {
     cleanFunction(TRUE)
+    shinyjs::enable("step10")
     shinyjs::enable("step11")
     shinyjs::enable("step12")
     shinyjs::enable("step21")
@@ -368,12 +395,59 @@ server <- function(input, output, session) {
     )
     updateSelectInput(
       session, "chrs",
-      # choices = unique(values$data$Chromosome),
-      choices = c(filtered_data,"All"),
+      choices = c(filtered_data, "All"),
       selected = unique(values$data$Chromosome)[1]
+    )
+    updateSelectInput(
+      session, "color_sample",
+      choices = colnames(values$data)[4:ncol(values$data)],
+      selected = colnames(values$data)[4]
     )
   })
   
+  output$color_picker_ui <- renderUI({
+    if (requireNamespace("colourpicker", quietly = TRUE)) {
+      colourpicker::colourInput(
+        inputId = "color_hex_picker",
+        label   = "Choose a Color:",
+        value   = "#6C9FB8",
+        allowTransparent = FALSE
+      )
+    } else {
+      NULL
+    }
+  })
+  
+  # ------------------------------------
+  observeEvent(input$step10, {
+    req(input$color_sample)
+    col <- input$color_hex_picker
+    
+    if (!is_hex_color(col)) {
+      showNotification("Please pick a valid color in #RRGGBB format.", type = "error")
+      return(NULL)
+    }
+    cmap <- values$color_map_list
+    if (is.null(cmap) || is.function(cmap)) cmap <- list()
+    cmap[[as.character(input$color_sample)]] <- col
+    values$color_map_list <- cmap
+  })
+  
+  output$color_submit_print <- renderPrint({
+    cmap <- values$color_map_list
+    if (is.null(cmap) || length(cmap) == 0) {
+      cat("No color has been assigned yet. Use the color picker above to set one.\n")
+    } else {
+      df <- data.frame(
+        Sample = names(cmap),
+        Color  = unlist(cmap, use.names = FALSE),
+        row.names = NULL, check.names = FALSE
+      )
+      print(df, row.names = FALSE)
+    }
+  })
+  
+  # -------------------- Chromosome Coverage Plot --------------------
   observeEvent(input$step11, {
     shinyjs::disable("step11")
     shinyjs::disable("step12")
@@ -384,30 +458,18 @@ server <- function(input, output, session) {
     tryCatch({
       values$coveragePlots <- list()
       
-      plot_output_list <- lapply(input$weightCol1, function(sample) {
-        file_id <- digest::digest(values$data) 
-        if (input$Selectdata == "Example Data") {
-          cache_file <- file.path(cache_dir, paste0("example_cache_", file_id, "_", sample, "_", input$chrs, ".rds"))
-          if (file.exists(cache_file)) {
-            p <- readRDS(cache_file)
-          } else {
-            if(input$chrs == "All"){
-              p <- covplot2(
-                filtered_gr,
-                weightCol = as.character(sample),
-                title = paste("Peaks over Chromosomes", sample)
-              )
-            }else{
-              p <- covplot1(
-                filtered_gr,
-                weightCol = as.character(sample),
-                chrs = as.character(input$chrs),
-                title = paste("Peaks over Chromosomes for", sample)
-              )
-            }
-            saveRDS(p, cache_file)
-          }
-        } else if (input$Selectdata == "Custom Data") {
+      if (input$Selectdata == "Upload data") {
+        file_id <- digest::digest(values$data)
+        samples <- input$weightCol1
+        to_check <- vapply(
+          samples,
+          function(smp) file.path(
+            cache_dir,
+            paste0("custom_cache_", file_id, "_", digest::digest(list(smp, input$chrs)), ".rds")
+          ),
+          FUN.VALUE = character(1)
+        )
+        if (any(!file.exists(to_check))) {
           showModal(modalDialog(
             title = "Drawing the plot",
             div(
@@ -416,29 +478,81 @@ server <- function(input, output, session) {
               shiny::tags$a(img(src = "ZZ5H.gif", height = "100px"))
             ),
             footer = NULL,
-            easyClose = F
+            easyClose = FALSE
           ))
-          cache_file <- file.path(cache_dir, paste0("custom_cache_", file_id, "_", digest::digest(list(sample, input$chrs)), ".rds"))
+        }
+      }
+      
+      plot_output_list <- lapply(input$weightCol1, function(sample) {
+        file_id <- digest::digest(values$data)
+        
+        if (input$Selectdata == "Example dataset") {
+          cache_file <- file.path(
+            cache_dir,
+            paste0("example_cache_", file_id, "_", sample, "_", input$chrs, ".rds")
+          )
+          
           if (file.exists(cache_file)) {
-            p <- readRDS(cache_file)
+            p0 <- readRDS(cache_file)
           } else {
-            if(input$chrs == "All"){
-              p <- covplot2(
+            if (input$chrs == "All") {
+              p0 <- covplot2(
                 filtered_gr,
                 weightCol = as.character(sample),
-                title = paste("Peaks over Chromosomes", sample)
+                title     = paste("Peaks over Chromosomes", sample)
               )
-            }else{
-              p <- covplot1(
+            } else {
+              p0 <- covplot1(
                 filtered_gr,
                 weightCol = as.character(sample),
-                chrs = as.character(input$chrs),
-                title = paste("Peaks over Chromosomes for", sample)
+                chrs      = as.character(input$chrs),
+                title     = paste("Peaks over Chromosomes for", sample)
               )
             }
-            saveRDS(p, cache_file)
+            saveRDS(p0, cache_file)
+          }
+          
+          sample_col <- get_sample_color(sample, values$color_map_list)
+          if (!is.null(sample_col)) {
+            p <- force_plot_color(p0, sample_col)
+          } else {
+            p <- p0
+          }
+          
+        } else if (input$Selectdata == "Upload data") {
+          cache_file <- file.path(
+            cache_dir,
+            paste0("custom_cache_", file_id, "_", digest::digest(list(sample, input$chrs)), ".rds")
+          )
+          
+          if (file.exists(cache_file)) {
+            p0 <- readRDS(cache_file)
+          } else {
+            if (input$chrs == "All") {
+              p0 <- covplot2(
+                filtered_gr,
+                weightCol = as.character(sample),
+                title     = paste("Peaks over Chromosomes", sample)
+              )
+            } else {
+              p0 <- covplot1(
+                filtered_gr,
+                weightCol = as.character(sample),
+                chrs      = as.character(input$chrs),
+                title     = paste("Peaks over Chromosomes for", sample)
+              )
+            }
+            saveRDS(p0, cache_file) 
+          }
+          
+          sample_col <- get_sample_color(sample, values$color_map_list)
+          if (!is.null(sample_col)) {
+            p <- force_plot_color(p0, sample_col)
+          } else {
+            p <- p0
           }
         }
+        
         values$coveragePlots[[sample]] <- p
         
         plotname <- paste("covplot_", sample, sep = "")
@@ -456,13 +570,14 @@ server <- function(input, output, session) {
         type = "error"
       )
     }, finally = {
-      removeModal()
+      shinyjs::enable("step10")
       shinyjs::enable("step11")
       shinyjs::enable("step12")
+      removeModal()
     })
   })
   
-  #生成谱图
+  # -------------------- Profile Plot --------------------
   observeEvent(input$step12, {
     shinyjs::disable("step11")
     shinyjs::disable("step12")
@@ -477,27 +592,19 @@ server <- function(input, output, session) {
     tryCatch({
       values$profilePlots <- list()
       
-      plot_output_list <- lapply(input$weightCol2, function(sample) {
+      if (identical(input$Selectdata, "Upload data")) {
         file_id <- digest::digest(values$data)
-        if (input$Selectdata == "Example Data") {
-          cache_file <- file.path(cache_dir, paste0("profilePlots_example_cache_", file_id, "_", sample, "_upstream_", input$upstream, "_downstream_", input$downstream, ".rds"))
-          if (file.exists(cache_file)) {
-            p <- readRDS(cache_file)
-          } else {
-            tagMatrix <- getTagMatrix(
-              values$masterPeak,
-              windows = promoter,
-              weightCol = as.character(sample)
-            )
-            p <- plotAvgProf(
-              tagMatrix,
-              xlim = c(-as.numeric(input$upstream), as.numeric(input$downstream)),
-              xlab = "Genomic Region (5' -> 3')",
-              ylab = "Read Count Frequency"
-            )
-            saveRDS(p, cache_file)
-          }
-        } else if (input$Selectdata == "Custom Data") {
+        samples <- input$weightCol2
+        to_check <- vapply(
+          samples,
+          function(smp) file.path(
+            cache_dir,
+            paste0("profilePlots_custom_cache_", file_id, "_", smp,
+                   "_upstream_", input$upstream, "_downstream_", input$downstream, ".rds")
+          ),
+          FUN.VALUE = character(1)
+        )
+        if (any(!file.exists(to_check))) {
           showModal(modalDialog(
             title = "Drawing the plot",
             div(
@@ -506,26 +613,71 @@ server <- function(input, output, session) {
               shiny::tags$a(img(src = "ZZ5H.gif", height = "100px"))
             ),
             footer = NULL,
-            easyClose = F
+            easyClose = FALSE
           ))
-          
-          cache_file <- file.path(cache_dir, paste0("profilePlots_custom_cache_", file_id, "_", sample, "_upstream_", input$upstream, "_downstream_", input$downstream, ".rds"))
+        }
+      }
+      
+      plot_output_list <- lapply(input$weightCol2, function(sample) {
+        file_id <- digest::digest(values$data)
+        if (input$Selectdata == "Example dataset") {
+          cache_file <- file.path(
+            cache_dir,
+            paste0("profilePlots_example_cache_", file_id, "_", sample,
+                   "_upstream_", input$upstream, "_downstream_", input$downstream, ".rds")
+          )
           if (file.exists(cache_file)) {
-            p <- readRDS(cache_file)
+            p0 <- readRDS(cache_file)
           } else {
             tagMatrix <- getTagMatrix(
               values$masterPeak,
               windows = promoter,
               weightCol = as.character(sample)
             )
-            p <- plotAvgProf(
+            p0 <- plotAvgProf(
               tagMatrix,
               xlim = c(-as.numeric(input$upstream), as.numeric(input$downstream)),
               xlab = "Genomic Region (5' -> 3')",
               ylab = "Read Count Frequency"
             )
-            saveRDS(p, cache_file)
+            saveRDS(p0, cache_file)
           }
+        } else if (input$Selectdata == "Upload data") {
+          cache_file <- file.path(
+            cache_dir,
+            paste0("profilePlots_custom_cache_", file_id, "_", sample,
+                   "_upstream_", input$upstream, "_downstream_", input$downstream, ".rds")
+          )
+          if (file.exists(cache_file)) {
+            p0 <- readRDS(cache_file)
+          } else {
+            tagMatrix <- getTagMatrix(
+              values$masterPeak,
+              windows = promoter,
+              weightCol = as.character(sample)
+            )
+            p0 <- plotAvgProf(
+              tagMatrix,
+              xlim = c(-as.numeric(input$upstream), as.numeric(input$downstream)),
+              xlab = "Genomic Region (5' -> 3')",
+              ylab = "Read Count Frequency"
+            )
+            saveRDS(p0, cache_file)
+          }
+        }
+        
+        sample_col <- get_sample_color(sample, values$color_map_list)
+        if (!is.null(sample_col)) {
+          p0$scales$scales <- Filter(
+            function(s) !(any(s$aesthetics %in% c("colour","color","fill"))),
+            p0$scales$scales
+          )
+          p <- p0 +
+            aes(color = "profile") +
+            scale_color_manual(values = sample_col) +
+            guides(color = "none")
+        } else {
+          p <- p0
         }
         
         values$profilePlots[[sample]] <- p
@@ -591,7 +743,7 @@ server <- function(input, output, session) {
       sendSweetAlert(
         session = session,
         title = "Success",
-        text = paste0("Filtering completed successfully! Rows retained: ", nrow(dataS)),
+        text = paste0("Filtering completed successfully! Peaks retained: ", nrow(dataS)),
         type = "success"
       )
       
@@ -611,7 +763,7 @@ server <- function(input, output, session) {
         )
       })
       
-      updateTabsetPanel(session, "datapreview", selected = "After Filter")
+      updateTabsetPanel(session, "datapreview", selected = "After Filtering")
       
     }, error = function(e) {
       sendSweetAlert(
@@ -641,6 +793,7 @@ server <- function(input, output, session) {
       showNotification("Group name already exists!", type = "error")
       return()
     }
+
     values$groups[[input$groupName]] <- input$samples
     values$groupCount <- length(values$groups)
     updateSelectizeInput(session, "samples", selected = NULL)
@@ -648,6 +801,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$clearGroups, {
+    clean_group1(T)
     values$groups <- list()
     values$groupCount <- 0
   })
@@ -658,13 +812,20 @@ server <- function(input, output, session) {
       return("No groups defined yet.")
     }
     shinyjs::enable("step2_to_step3")
-    shinyjs::enable("step31")
     values$groups
   })
   
   observeEvent(input$step2_to_step3, {
-    req(length(values$groups) > 0)  
-    clean_group(T)
+    req(values$groups) 
+    if (length(values$groups) < 2) {
+      showNotification(
+        "You need to add at least two groups.",
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+    clean_group2(T)
     sendSweetAlert(
       session = session,
       title = "Success",
@@ -672,28 +833,37 @@ server <- function(input, output, session) {
       type = "success"
     )
     updateTabItems(session, "menuitem", "step3")
+    shinyjs::enable("step31")
   })
   
-  #-----------分组后更新ui界面------------
+  #----------------------
   observeEvent(input$step31, {
     output$dynamic_tabs_step3 <- renderUI({ NULL })
     if (values$groupCount == 2) {
       updateTabsetPanel(session, "visualization_tabs")
       output$dynamic_tabs_step3 <- renderUI({
         shinydashboard::tabBox(
-          title = shiny::tagList(icon("table"), "Analysis Results"),
+          title = shiny::tagList(icon("table"), "Differential Peak Results"),
           width = 12,
-          selected = "Before Filter",
+          selected = "Before Filtering",
           side = "right",
           tabsetPanel(
             id = "analysis_results",
             tabPanel(
-              shiny::tagList("Before Filter"),
+              shiny::tagList("Before Filtering"),
               fluidRow(
+                column(9,
+                       # verbatimTextOutput("summaryText"),
+                       DT::dataTableOutput("deseqResult"),
+                       downloadButton(
+                         outputId = "downloadDeseqResult1",
+                         label = "Download"
+                       )
+                ),
                 column(3,
                        textInput(
-                         inputId = "pvalueThreshold",
-                         label = "P-value Threshold:",
+                         inputId = "adjpvalueThreshold",
+                         label = "Adjusted P-value Threshold:",
                          value = "0.05"
                        ),
                        textInput(
@@ -706,19 +876,11 @@ server <- function(input, output, session) {
                          label = "Submit",
                          icon = icon("check")
                        )
-                ),
-                column(9,
-                       verbatimTextOutput("summaryText"),
-                       DT::dataTableOutput("deseqResult"),
-                       downloadButton(
-                         outputId = "downloadDeseqResult1",
-                         label = "Download"
-                       )
                 )
               )
             ),
             tabPanel(
-              shiny::tagList("After Filter"),
+              shiny::tagList("After Filtering"),
               fluidRow(
                 column(12,
                        DT::dataTableOutput("deseqResult2"),
@@ -741,7 +903,7 @@ server <- function(input, output, session) {
             shiny::tagList(comp[1], " vs ", comp[2]),
             fluidRow(
               column(12,
-                     verbatimTextOutput(outputId = paste0("summary_", comp[1], "_vs_", comp[2])),
+                     # verbatimTextOutput(outputId = paste0("summary_", comp[1], "_vs_", comp[2])),
                      DT::dataTableOutput(outputId = paste0("deseqResult_", comp[1], "_vs_", comp[2])),
                      downloadButton(
                        outputId = paste0("downloadDeseqResult_", comp[1], "_vs_", comp[2]),
@@ -755,14 +917,14 @@ server <- function(input, output, session) {
         comparison_display <- sapply(comparisons, function(comp) paste(comp, collapse = " vs "))
         shiny::tagList(
           shinydashboard::tabBox(
-            title = shiny::tagList(icon("table"), "Analysis Results"),
+            title = shiny::tagList(icon("table"), "Differential Peak Results"),
             width = 12,
             selected = comparison_keys[1],
             side = "right",
             do.call(tabsetPanel, c(list(id = "analysis_results"), tabPanels))
           ),
           shinydashboard::tabBox(
-            title = shiny::tagList(icon("table"), "Select Comparison and Filter",
+            title = shiny::tagList(icon("table"), "Select Comparison and Filtering",
                                    bsButton("comparisonhelp", label = "", icon = icon("question"), size = "extra-small"),
                                    bsPopover(
                                      id = "comparisonhelp", 
@@ -777,7 +939,7 @@ server <- function(input, output, session) {
             width = 12,
             tabsetPanel(
               tabPanel(
-                shiny::tagList("Filter Result"),
+                shiny::tagList("Filtering Result"),
                 fluidRow(
                   column(3,
                          selectInput(
@@ -787,8 +949,8 @@ server <- function(input, output, session) {
                            selected = comparison_keys[1]
                          ),
                          textInput(
-                           inputId = "pvalueThreshold",
-                           label = "P-value Threshold:",
+                           inputId = "adjpvalueThreshold",
+                           label = "Adjusted P-value Threshold:",
                            value = "0.05"
                          ),
                          textInput(
@@ -829,6 +991,7 @@ server <- function(input, output, session) {
   observeEvent(input$step31, {
     req(length(values$groups) > 0)
     allowStep32(FALSE)
+    clean_DAR(T)
     dataS <- values$dataS
     showModal(modalDialog(
       title = "Running Differential Analysis",
@@ -857,34 +1020,10 @@ server <- function(input, output, session) {
         design = ~ condition
       )
       values$DDS <- DESeq(dds)
-      updateTabItems(session, "menuitem", "step3")
-      sendSweetAlert(
-        session = session,
-        title = "Success",
-        text = "Differential Analysis completed successfully!",
-        type = "success"
-      )
-    }, error = function(e) {
-      sendSweetAlert(
-        session = session,
-        title = "Error",
-        text = paste("An error occurred during analysis:", e$message),
-        type = "error"
-      )
-    }, finally = {
-      removeModal()
-      shinyjs::enable("step312")
-    })
-  })
-  
-  observeEvent(input$step312, {
-    req(values$groups)
-    clean_DAR(T)
-    filteredDataS <- values$filteredDataS
-    filtered_masterPeak <- values$filtered_masterPeak
-    
-    tryCatch({
+      
       DDS <- values$DDS
+      filteredDataS <- values$filteredDataS
+      filtered_masterPeak <- values$filtered_masterPeak
       normDDS <- counts(DDS, normalized = TRUE)
       colnames(normDDS) <- paste0(colnames(normDDS), "_norm")
       
@@ -892,7 +1031,6 @@ server <- function(input, output, session) {
         res <- results(DDS, 
                        independentFiltering = input$independentFiltering, 
                        altHypothesis = input$altHypothesis,
-                       lfcThreshold = input$lfcThreshold,
                        alpha = input$alpha,
                        pAdjustMethod = input$pAdjustMethod)
         
@@ -906,12 +1044,6 @@ server <- function(input, output, session) {
         new_colnames[new_colnames == "baseMean"] <- "average expression"
         new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
         new_colnames[new_colnames == "stat"] <- "Wald Statistic"
-        
-        output$summaryText <- renderText({
-          summary_str <- capture.output(summary(res))
-          formatted_summary <- paste(head(summary_str[summary_str != ""], 6), collapse = "\n")
-          formatted_summary
-        })
         
         output$deseqResult <- DT::renderDataTable({
           DT::datatable(
@@ -929,21 +1061,22 @@ server <- function(input, output, session) {
           )
         })
         
+        values$deseqResult <- values$deseqResult %>%
+          filter(!is.na(padj) & padj != "")
+        
       } else if (values$groupCount > 2) {
-        # 获取所有分组名称，并生成两两组合
         group_names <- levels(values$condition)
         comparisons <- combn(group_names, 2, simplify = FALSE)
         
-        results_list <- list()         # 存放每个比较的 results 对象
-        merged_results_list <- list()  # 存放合并后的结果表
-        summary_list <- list()         # 存放每个比较的摘要信息
+        results_list <- list()      
+        merged_results_list <- list()
         
         for (comp in comparisons) {
           comp_name <- paste(comp, collapse = "_vs_")
           comp_res <- results(DDS, contrast = c("condition", comp[1], comp[2]),
                               independentFiltering = input$independentFiltering, 
                               altHypothesis = input$altHypothesis,
-                              lfcThreshold = input$lfcThreshold,
+                              lfcThreshold = 0,
                               alpha = input$alpha,
                               pAdjustMethod = input$pAdjustMethod)
           results_list[[comp_name]] <- comp_res
@@ -953,8 +1086,6 @@ server <- function(input, output, session) {
           filtered_masterPeak_info <- filtered_masterPeak_df[, c("seqnames", "start", "end")]
           merged_countMatDiff <- cbind(filtered_masterPeak_info, countMatDiff)
           merged_results_list[[comp_name]] <- merged_countMatDiff
-          
-          summary_list[[comp_name]] <- capture.output(summary(comp_res))
         }
         values$deseqResultList <- merged_results_list
         
@@ -983,16 +1114,19 @@ server <- function(input, output, session) {
               )
             })
             
-            output[[paste0("summary_", cn)]] <- renderText({
-              summary_str <- summary_list[[cn]]
-              formatted_summary <- paste(head(summary_str[summary_str != ""], 6), collapse = "\n")
-              formatted_summary
+            values$deseqResultList <- lapply(merged_results_list, function(df) {
+              df[!is.na(df$padj) & df$padj != "", ]
             })
+            
           })
         }
       }
-      allowStep32(TRUE)
-      shinyjs::enable("step32")
+      sendSweetAlert(
+        session = session,
+        title = "Success",
+        text = "Differential Analysis completed successfully!",
+        type = "success"
+      )
     }, error = function(e) {
       sendSweetAlert(
         session = session,
@@ -1000,29 +1134,83 @@ server <- function(input, output, session) {
         text = paste("An error occurred during analysis:", e$message),
         type = "error"
       )
+    }, finally = {
+      updateTabItems(session, "menuitem", "step3")
+      removeModal()
+      allowStep32(TRUE)
+      shinyjs::enable("step32")
     })
   })
   
-  #-------------过滤-------------
-  observeEvent(input$pvalueThreshold, {
-    # 如果为空、NA 或转换为数字后不在 0 到 1 范围内
-    if (is.null(input$pvalueThreshold) ||
-        is.na(as.numeric(input$pvalueThreshold)) ||
-        as.numeric(input$pvalueThreshold) < 0 ||
-        as.numeric(input$pvalueThreshold) > 1) {
+  output$differential_Parameters <- renderUI({
+    is_independent_filter <- ifelse(is.null(input$independentFiltering), FALSE, input$independentFiltering)
+    
+    if (is_independent_filter) {
+      radio_col <- 3
+      alt_col <- 4
+      alpha_col <- 2
+      padj_col <- 3
+    } else {
+      radio_col <- 4
+      alt_col <- 4
+      alpha_col <- 2
+      padj_col <- 4
+    }
+    
+    list(
+      column(alt_col,
+             selectInput(
+               inputId = "altHypothesis",
+               label = "Direction of Change:",
+               choices = list(
+                 "Upregulated Peaks" = "greater",
+                 "Downregulated Peaks" = "less",
+                 "Both Directions" = "greaterAbs"
+               ),
+               selected = "greaterAbs"
+             )),
+      column(radio_col,
+             radioButtons(
+               inputId = "independentFiltering",
+               label = "Apply Independent Filtering for Low-Count Peaks",
+               choices = list("Yes" = TRUE, "No" = FALSE),
+               selected = is_independent_filter,
+               inline = TRUE
+             )),
+      column(alpha_col,
+             if (is_independent_filter) {
+               numericInput("alpha", "Significance Level:", value = 0.01, min = 0, max = 1, step = 0.01)
+             } else {
+               hidden(numericInput("alpha", NULL, value = 0.01, min = 0, max = 1, step = 0.01))
+             }),
+      column(padj_col,
+             selectInput(
+               inputId = "pAdjustMethod",
+               label = "P-value:",
+               choices = c("Benjamini–Hochberg (BH)" = "BH", "Holm" = "holm"),
+               selected = "BH"
+             ))
+    )
+  })
+  
+  #--------------------------
+  observeEvent(input$adjpvalueThreshold, {
+    if (is.null(input$adjpvalueThreshold) ||
+        is.na(as.numeric(input$adjpvalueThreshold)) ||
+        as.numeric(input$adjpvalueThreshold) < 0 ||
+        as.numeric(input$adjpvalueThreshold) > 1) {
       showFeedbackDanger(
-        inputId = "pvalueThreshold",
-        text = "P-value threshold must be a number between 0 and 1."
+        inputId = "adjpvalueThreshold",
+        text = "Adjusted P-value threshold must be a number between 0 and 1."
       )
     } else {
-      hideFeedback("pvalueThreshold")
-      pvalueThreshold <- as.numeric(input$pvalueThreshold)
-      values$pvalueThreshold <- pvalueThreshold
+      hideFeedback("adjpvalueThreshold")
+      adjpvalueThreshold <- as.numeric(input$adjpvalueThreshold)
+      values$adjpvalueThreshold <- adjpvalueThreshold
     }
   })
   
   observeEvent(input$log2fcThreshold, {
-    # 如果为空、NA 或转换为数字后小于0
     if (is.null(input$log2fcThreshold) ||
         is.na(as.numeric(input$log2fcThreshold)) ||
         as.numeric(input$log2fcThreshold) < 0) {
@@ -1038,10 +1226,10 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$step32, {
-    req(values$log2fcThreshold,values$pvalueThreshold)
+    req(values$log2fcThreshold,values$adjpvalueThreshold)
     clean_DRF(T)
     log2fcThreshold <- values$log2fcThreshold
-    pvalueThreshold <- values$pvalueThreshold
+    adjpvalueThreshold <- values$adjpvalueThreshold
     tryCatch({
       
       if (values$groupCount == 2) {
@@ -1058,7 +1246,7 @@ server <- function(input, output, session) {
       }
       
       sig_peaks <- dataToFilter[
-        dataToFilter$pvalue < pvalueThreshold &
+        dataToFilter$padj < adjpvalueThreshold &
           abs(dataToFilter$log2FoldChange) > log2fcThreshold, 
       ]
       
@@ -1072,7 +1260,7 @@ server <- function(input, output, session) {
       sendSweetAlert(
         session = session,
         title = "Success",
-        text = paste0("Filtering completed successfully! Rows retained: ", nrow(sig_peaks)),
+        text = paste0("Filtering completed successfully! Peaks retained: ", nrow(sig_peaks)),
         type = "success"
       )
       
@@ -1093,7 +1281,8 @@ server <- function(input, output, session) {
             )
           )
         })
-        updateTabsetPanel(session, "analysis_results", selected = "After Filter")
+        
+        updateTabsetPanel(session, "analysis_results", selected = "After Filtering")
       } else if (values$groupCount > 2) {
         output$filteredResult <- DT::renderDataTable({
           DT::datatable(
@@ -1124,7 +1313,7 @@ server <- function(input, output, session) {
     })
   })
   
-  #-----------基因注释------------
+  #-----------------------
   observe({
     req(values$sig_peaks)
     sig_peaks <- values$sig_peaks
@@ -1244,23 +1433,20 @@ server <- function(input, output, session) {
     })
   })
   
-  #-----------差异分析可视化------------
-  # 初始化存储参数的响应式值
+  #-----------------------
   volcano_params <- reactiveValues(
-    FCcutoff1 = 1.0,  # 默认值需与UI控件一致
+    FCcutoff1 = 1.0,
     FCcutoff2 = 1.0,
-    pCutoff = 10^-0.05,  # 假设input$pCutoff默认0.05
+    pCutoff = 10^-0.05,
     pointSize = 2.0,
     labSize = 5.0,
-    initialized = FALSE  # 首次渲染标志
+    initialized = FALSE
   )
-  
-  # 首次自动渲染逻辑（不需要按钮）
+
   observe({
-    req(values$peakAnno_df)  # 确保数据存在
+    req(values$peakAnno_df)
     req(values$DVReady)
     if (!volcano_params$initialized) {
-      # 使用当前UI控件的值初始化参数（首次加载时）
       volcano_params$FCcutoff1 <- input$FCcutoff1
       volcano_params$FCcutoff2 <- input$FCcutoff2
       volcano_params$pCutoff <- 10^(-input$pCutoff)
@@ -1404,7 +1590,6 @@ server <- function(input, output, session) {
         )
       })
       
-      #富集分析基因表
       observe({
         if (nrow(red_peaks_up) > 0) {
           updateTextAreaInput(
@@ -1560,14 +1745,14 @@ server <- function(input, output, session) {
       ggplot(peakAnno_df2, aes(x = baseMean, y = log2FoldChange)) +
         geom_point(aes(color = change), alpha = 0.5) +
         scale_color_manual(values = c("DOWN" = "lightblue", "UP" = "lightcoral")) +
-        scale_x_log10() +  # 采用 log10 刻度显示基因的平均表达量
+        scale_x_log10() +
         labs(title = "MA Plot", x = "Base Mean", y = "Log2 Fold Change") +
         theme_minimal() +
         geom_text_repel(data = top_genes, aes(label = SYMBOL),
-                        size = input$size,  # 从输入框获取 size
+                        size = input$size,
                         color = "black",
-                        box.padding = input$boxPadding,  # 从输入框获取 box.padding
-                        max.overlaps = input$maxOverlaps)  # 从输入框获取 max.overlaps
+                        box.padding = input$boxPadding,
+                        max.overlaps = input$maxOverlaps)
       
     )
   })
@@ -1607,15 +1792,15 @@ server <- function(input, output, session) {
     rownames(summarized_data_df) <- summarized_data_df$annotation
     data_for_heatmap <- summarized_data_df %>% dplyr::select(-annotation)
     print(pheatmap(data_for_heatmap,
-                   scale = "row",  # 可以选择对行进行标准化
+                   scale = "row", 
                    clustering_distance_rows = "euclidean",
                    clustering_distance_cols = "euclidean",
-                   clustering_method = "complete",  # 聚类方法
+                   clustering_method = "complete",
                    main = "Peak Count in Regions"))
   })
   
   
-  #-------------------富集分析-------------------
+  #------------------------------------
   observeEvent(input$step6, {
     output$dynamic_tabs <- renderUI({NULL})
     clean_enrichment(T)
@@ -1871,7 +2056,7 @@ server <- function(input, output, session) {
       })
     }
     
-    # GSEA analysis type
+    #GSEA analysis type
     else if (input$analysis_type == "GSEA") {
       updateTabsetPanel(session, "visualization_tabs")
       output$dynamic_tabs <- renderUI({
@@ -1941,10 +2126,10 @@ server <- function(input, output, session) {
     }
     
   })
-  #######################################################
+  #---------------
   output$GSEA_geneset_ui <- renderUI({
     if (input$analysis_type == "GSEA") {
-      if (input$Selectdata == "Example Data" || input$species == "Human") {
+      if (input$Selectdata == "Example dataset" || input$species == "Human") {
         tagList(
           selectInput("GSEA_geneset", "Select Gene Set for GSEA:",
                       choices = c("H: hallmark gene sets" = "H", 
@@ -1958,10 +2143,10 @@ server <- function(input, output, session) {
                                   "C8: cell type signature gene sets" = "C8",
                                   "All gene sets" = "ALL"),
                       selected = "H"),
-          numericInput("GSEA_pvalue_cutoff", "GSEA p-value Cutoff:",
+          numericInput("GSEA_pvalue_cutoff", "p-value Cutoff (GSEA):",
                        value = 0.1, min = 0, max = 1, step = 0.01)
         )
-      } else if (input$species == "Mouse" && input$Selectdata != "Example Data") {
+      } else if (input$species == "Mouse" && input$Selectdata != "Example dataset") {
         tagList(
           selectInput("GSEA_geneset", "Select Gene Set for GSEA:",
                       choices = c("MH: hallmark gene sets" = "MH", 
@@ -1975,7 +2160,7 @@ server <- function(input, output, session) {
           numericInput("GSEA_pvalue_cutoff", "GSEA p-value Cutoff:",
                        value = 0.1, min = 0, max = 1, step = 0.01)
         )
-      } else if (input$species == "Drosophila" && input$Selectdata != "Example Data") {
+      } else if (input$species == "Drosophila" && input$Selectdata != "Example dataset") {
         tagList(
           selectInput("GSEA_geneset", "Select Gene Set for GSEA:",
                       choices = c("GO", "KEGG"),
@@ -2014,7 +2199,6 @@ server <- function(input, output, session) {
       upgenes_list_enrichment <- input$upgenes_list2
       downgenes_list_enrichment <- input$downgenes_list2
       GSEA_genelist_enrichment <- input$GSEA_genelist
-      # 处理upgenes_list_enrichment
       if (length(upgenes_list_enrichment) == 0 || upgenes_list_enrichment == "No upregulated genes") {
         upgenes_list_enrichment <- NULL
       } else {
@@ -2031,8 +2215,7 @@ server <- function(input, output, session) {
           upgenes_list_enrichment_dm_kegg <- as.character(upgenes_list_enrichment_dm_kegg$FLYBASECG)
         }
       }
-      
-      # 处理downgenes_list_enrichment
+
       if (length(downgenes_list_enrichment) == 0 || downgenes_list_enrichment == "No downregulated genes") {
         downgenes_list_enrichment <- NULL
       } else {
@@ -2049,9 +2232,8 @@ server <- function(input, output, session) {
           downgenes_list_enrichment_dm_kegg <- as.character(downgenes_list_enrichment_dm_kegg$FLYBASECG)
         }
       }
-      # 处理GSEA genelist
-      #人类小鼠
-      if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example Data"){
+
+      if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example dataset"){
         if (length(GSEA_genelist_enrichment) == 0 || GSEA_genelist_enrichment == "No significant genes") {
           geneList_vector <- NULL
         } else {
@@ -2067,21 +2249,11 @@ server <- function(input, output, session) {
           names(geneList_vector) <- as.character(geneList_gsea$SYMBOL)
           print(geneList_vector)
         }
-        #果蝇
+
       }else if(!is.null(input$species) && input$species == "Drosophila"){
         if (length(GSEA_genelist_enrichment) == 0 || GSEA_genelist_enrichment == "No significant genes") {
           geneList_vector <- NULL
         } else {
-          # GSEA_genelist_enrichment <- unlist(strsplit(GSEA_genelist_enrichment, "\n"))
-          # GSEA_genelist_enrichment <- unique(GSEA_genelist_enrichment)
-          # geneList_gsea <- values$peakAnno_df[values$peakAnno_df$SYMBOL %in% GSEA_genelist_enrichment, c("SYMBOL", "geneId", "log2FoldChange")]
-          # geneList_gsea <- geneList_gsea[!is.na(geneList_gsea$geneId) & !is.na(geneList_gsea$log2FoldChange), ]
-          # geneList_gsea <- geneList_gsea %>%
-          #   group_by(geneId) %>%
-          #   summarise(log2FoldChange = mean(log2FoldChange)) %>%
-          #   arrange(desc(log2FoldChange))
-          # geneList_vector <- geneList_gsea$log2FoldChange
-          # names(geneList_vector) <- as.character(geneList_gsea$geneId)
           GSEA_genelist_enrichment <- unlist(strsplit(GSEA_genelist_enrichment, "\n"))
           GSEA_genelist_enrichment <- unique(GSEA_genelist_enrichment)
           geneList_gsea <- values$peakAnno_df[values$peakAnno_df$SYMBOL %in% GSEA_genelist_enrichment, c("SYMBOL", "log2FoldChange")]
@@ -2117,7 +2289,6 @@ server <- function(input, output, session) {
       }
       
       if(input$analysis_type == "GO") {
-        ##########GO##########
         ontology <- switch(input$go_ontology,
                            "BP" = "BP",
                            "MF" = "MF",
@@ -2273,9 +2444,8 @@ server <- function(input, output, session) {
         }
         
       } else if(input$analysis_type == "KEGG") {
-        ##########KEGG##########
         # ---------up------------------
-        if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example Data"){
+        if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example dataset"){
           if (is.null(upgenes_list_enrichment) || length(upgenes_list_enrichment) == 0) {
             output$enrichment_result_table_up <- DT::renderDataTable({
               DT::datatable(
@@ -2535,35 +2705,35 @@ server <- function(input, output, session) {
           
         }
       }else if(input$analysis_type == "GSEA") {
-        if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example Data"){
+        if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example dataset"){
           
           print(paste("Analysis Type:", input$analysis_type))
           print(paste("Species:", input$species))
           print(paste("Selectdata:", input$Selectdata))
           print(paste("GSEA geneset:", input$GSEA_geneset))
           
-          if(input$species == "Human" || input$Selectdata == "Example Data"){
+          if(input$species == "Human" || input$Selectdata == "Example dataset"){
             GSEA_geneset <- switch(input$GSEA_geneset,
-                                   "H" = h_human, 
-                                   "C1" = c1_human,
-                                   "C2" = c2_human,
-                                   "C3" = c3_human,
-                                   "C4" = c4_human,
-                                   "C5" = c5_human,
-                                   "C6" = c6_human,
-                                   "C7" = c7_human,
-                                   "C8" = c8_human,
-                                   "ALL" = msigdb_human
+                                   "H" = read.gmt("extdata/h.all.v2024.1.Hs.symbols.gmt"), 
+                                   "C1" = read.gmt("extdata/c1.all.v2024.1.Hs.symbols.gmt"),
+                                   "C2" = read.gmt("extdata/c2.all.v2024.1.Hs.symbols.gmt"),
+                                   "C3" = read.gmt("extdata/c3.all.v2024.1.Hs.symbols.gmt"),
+                                   "C4" = read.gmt("extdata/c4.all.v2024.1.Hs.symbols.gmt"),
+                                   "C5" = read.gmt("extdata/c5.all.v2024.1.Hs.symbols.gmt"),
+                                   "C6" = read.gmt("extdata/c6.all.v2024.1.Hs.symbols.gmt"),
+                                   "C7" = read.gmt("extdata/c7.all.v2024.1.Hs.symbols.gmt"),
+                                   "C8" = read.gmt("extdata/c8.all.v2024.1.Hs.symbols.gmt"),
+                                   "ALL" = read.gmt("extdata/msigdb.v2024.1.Hs.symbols.gmt")
             )
-          }else if(input$species == "Mouse"){
+          } else if(input$species == "Mouse"){
             GSEA_geneset <- switch(input$GSEA_geneset,
-                                   "MH" = mh_mouse, 
-                                   "M1" = m1_mouse,
-                                   "M2" = m2_mouse,
-                                   "M3" = m3_mouse,
-                                   "M5" = m5_mouse,
-                                   "M8" = m8_mouse,
-                                   "ALL" = msigdb_mouse
+                                   "MH" = read.gmt("extdata/mh.all.v2024.1.Mm.symbols.gmt"), 
+                                   "M1" = read.gmt("extdata/m1.all.v2024.1.Mm.symbols.gmt"),
+                                   "M2" = read.gmt("extdata/m2.all.v2024.1.Mm.symbols.gmt"),
+                                   "M3" = read.gmt("extdata/m3.all.v2024.1.Mm.symbols.gmt"),
+                                   "M5" = read.gmt("extdata/m5.all.v2024.1.Mm.symbols.gmt"),
+                                   "M8" = read.gmt("extdata/m8.all.v2024.1.Mm.symbols.gmt"),
+                                   "ALL" = read.gmt("extdata/msigdb.v2024.1.Mm.symbols.gmt")
             )
           }
           
@@ -3028,9 +3198,9 @@ server <- function(input, output, session) {
         rds_file_up <- file.path(cache_dir, paste0("up_sinse_", input_hash, ".rds"))
         rds_file_down <- file.path(cache_dir, paste0("down_sinse_", input_hash, ".rds"))
         
-        if (input$Selectdata == "Example Data") {
+        if (input$Selectdata == "Example dataset") {
           pwms <- readRDS(vertebrates_pwms_dir)
-        } else if (input$Selectdata == "Custom Data") {
+        } else if (input$Selectdata == "Upload data") {
           if (input$species == "Human" || input$species == "Mouse") {
             pwms <- readRDS(vertebrates_pwms_dir)
           } else if (input$species == "Drosophila") {
@@ -3212,9 +3382,8 @@ server <- function(input, output, session) {
       removeModal()
     })
   })
-
   
-  #-------------验证输入值------------
+  #-------------------------
   observeEvent(input$upstream, {
     if (is.null(input$upstream) || is.na(input$upstream) || input$upstream <= 0) {
       showFeedbackDanger(
@@ -3259,19 +3428,19 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$pvalueThreshold, {
-    if (is.null(input$pvalueThreshold) ||
-        is.na(as.numeric(input$pvalueThreshold)) ||
-        as.numeric(input$pvalueThreshold) < 0 ||
-        as.numeric(input$pvalueThreshold) > 1) {
+  observeEvent(input$adjpvalueThreshold, {
+    if (is.null(input$adjpvalueThreshold) ||
+        is.na(as.numeric(input$adjpvalueThreshold)) ||
+        as.numeric(input$adjpvalueThreshold) < 0 ||
+        as.numeric(input$adjpvalueThreshold) > 1) {
       showFeedbackDanger(
-        inputId = "pvalueThreshold",
-        text = "P-value threshold must be a number between 0 and 1."
+        inputId = "adjpvalueThreshold",
+        text = "Adjusted P-value threshold must be a number between 0 and 1."
       )
     } else {
-      hideFeedback("pvalueThreshold")
-      pvalueThreshold <- as.numeric(input$pvalueThreshold)
-      values$pvalueThreshold <- pvalueThreshold
+      hideFeedback("adjpvalueThreshold")
+      adjpvalueThreshold <- as.numeric(input$adjpvalueThreshold)
+      values$adjpvalueThreshold <- adjpvalueThreshold
     }
   })
   
@@ -3469,9 +3638,7 @@ server <- function(input, output, session) {
     }
   })
   
-  
-  
-  #------------图片下载-----------
+  #-----------------------
   # coverage_plot
   output$download_coverageplot <- downloadHandler(
     filename = function() {
@@ -3481,20 +3648,17 @@ server <- function(input, output, session) {
       req(length(values$coveragePlots) > 0)
       ext <- tolower(input$extPlot11)
       plots <- values$coveragePlots
-      
-      # 设置图形参数
+
       n <- length(plots)
       width <- 16
-      height <- if(n > 1) 12 * n else 12  # 自动调整高度
-      
-      # 创建图形设备
+      height <- if(n > 1) 8 * n else 8
+
       switch(ext,
              "pdf" = pdf(file, width = width, height = height),
              "png" = png(file, width = width * 100, height = height * 100, res = 300),
              "jpeg" = jpeg(file, width = width * 100, height = height * 100, 
                            res = 300, quality = 90))
-      
-      # 组合图形（如果多个）
+
       if(n > 1) {
         gridExtra::grid.arrange(
           grobs = plots,
@@ -3517,20 +3681,17 @@ server <- function(input, output, session) {
       req(length(values$profilePlots) > 0)
       ext <- tolower(input$extPlot12)
       plots <- values$profilePlots
-      
-      # 设置图形参数
+
       n <- length(plots)
       width <- 16
-      height <- if(n > 1) 12 * n else 12  # 自动调整高度
-      
-      # 创建图形设备
+      height <- if(n > 1) 8 * n else 8
+
       switch(ext,
              "pdf" = pdf(file, width = width, height = height),
              "png" = png(file, width = width * 100, height = height * 100, res = 300),
              "jpeg" = jpeg(file, width = width * 100, height = height * 100, 
                            res = 300, quality = 90))
-      
-      # 组合图形（如果多个）
+
       if(n > 1) {
         gridExtra::grid.arrange(
           grobs = plots,
@@ -3553,7 +3714,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # For two-group analysis: Download handlers for "Before Filter" and "After Filter"
+  # For two-group analysis: Download handlers for "Before Filtering" and "After Filtering"
   observe({
     req(values$groupCount)
     if (values$groupCount == 2) {
@@ -3563,9 +3724,7 @@ server <- function(input, output, session) {
         },
         content = function(file) {
           req(values$deseqResult)
-          # 复制数据框，不改变原始数据
           dataToWrite <- values$deseqResult
-          # 替换列名
           new_colnames <- colnames(dataToWrite)
           new_colnames[new_colnames == "baseMean"] <- "average expression"
           new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
@@ -3597,7 +3756,6 @@ server <- function(input, output, session) {
   observe({
     req(values$groupCount)
     if (values$groupCount > 2) {
-      # 为每个比较结果生成下载按钮对应的 downloadHandler
       for(comp_name in names(values$deseqResultList)) {
         local({
           cn <- comp_name
@@ -3618,8 +3776,7 @@ server <- function(input, output, session) {
           )
         })
       }
-      
-      # 针对过滤后的结果生成下载按钮对应的 downloadHandler
+
       output$downloadFilteredResult <- downloadHandler(
         filename = function() {
           paste0("deseqResult_after_filter_", input$selectedComparison, "_", Sys.Date(), ".csv")
@@ -3722,7 +3879,6 @@ server <- function(input, output, session) {
     }
   )
   
-  #火山图下载
   output$Download_Volcano <- downloadHandler(
     filename = function() {
       paste("Volcano_Plot_", Sys.Date(), ".", input$extPlot51, sep = "")
@@ -3767,9 +3923,7 @@ server <- function(input, output, session) {
       dev.off() 
     }
   )
-  
-  
-  #MA图下载
+
   output$Download_MA <- downloadHandler(
     filename = function() {
       paste("MA_Plot_", Sys.Date(), ".", input$extPlot52, sep = "")
@@ -3809,8 +3963,6 @@ server <- function(input, output, session) {
     }
   )
   
-  
-  #PCA
   output$Download_PCA <- downloadHandler(
     filename = function() {
       paste("PCA_Plot_", Sys.Date(), ".", input$extPlot53, sep = "")
@@ -3826,10 +3978,11 @@ server <- function(input, output, session) {
       rlogData <- rlog(values$DDS) 
       pcaData <- prcomp(t(assay(rlogData)))
       pcaDF <- as.data.frame(pcaData$x)
+      condition <- values$condition
       
       print(
         ggplot(pcaDF, aes(x = PC1, y = PC2)) +
-          geom_point(aes(color = values$condition), size = 4) +
+          geom_point(aes(color = condition), size = 4) +
           theme_minimal() +
           labs(title = "PCA Plot", x = "PC1", y = "PC2") +
           theme(legend.position = "top")
@@ -3837,8 +3990,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  #热图
+
   output$Download_Heatmap <- downloadHandler(
     filename = function() {
       paste("Heatmap_Plot_", Sys.Date(), ".", input$extPlot54, sep = "")
@@ -3879,8 +4031,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  #上调基因表格
+
   output$downloadupgenes_table <- downloadHandler(
     filename = function() {
       paste("Up_Genes_", Sys.Date(), ".csv", sep = "")
@@ -3896,8 +4047,7 @@ server <- function(input, output, session) {
       write.csv(as.data.frame(dataToWrite), file, row.names = FALSE)
     }
   )
-  
-  #下调基因表格
+
   output$downloaddowngenes_table <- downloadHandler(
     filename = function() {
       paste("Down_Genes_", Sys.Date(), ".csv", sep = "")
@@ -3914,9 +4064,7 @@ server <- function(input, output, session) {
     }
   )
   
-  #-------------------富集分析下载----------------------
-  
-  # 下载富集分析结果表格up
+  #-----------------------------------------
   output$Downloadenrichmenttableup <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Enrichment_Analysis_Up_Genes_", Sys.Date(), ".csv")
@@ -3930,7 +4078,6 @@ server <- function(input, output, session) {
     }
   )
   
-  # 下载富集分析结果表格down
   output$Downloadenrichmenttabledown <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Enrichment_Analysis_Down_Genes_", Sys.Date(), ".csv")
@@ -3943,8 +4090,7 @@ server <- function(input, output, session) {
       }
     }
   )
-  
-  # 下载富集分析结果表格gsea
+
   output$Downloadenrichmenttablegsea <- downloadHandler(
     filename = function() {
       paste("GSEA_Enrichment_Analysis_Results_", Sys.Date(), ".csv")
@@ -3953,8 +4099,7 @@ server <- function(input, output, session) {
       write.csv(as.data.frame(values$gsea_result), file, row.names = FALSE)
     }
   )
-  
-  # 下载GO:dotplot1
+
   output$DownloadGOdotplot1 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Dotplot_Up_Genes_", Sys.Date(), ".", input$extPlot6GOdotplot1, sep = "")
@@ -3971,8 +4116,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GO:dotplot2
+
   output$DownloadGOdotplot2 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Dotplot_Down_Genes_", Sys.Date(), ".", input$extPlot6GOdotplot2, sep = "")
@@ -3989,8 +4133,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GO:barplot1
+
   output$DownloadGObarplot1 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Barplot_Up_Genes_", Sys.Date(), ".", input$extPlot6GObarplot1, sep = "")
@@ -4007,8 +4150,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GO:barplot2
+
   output$DownloadGObarplot2 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Barplot_Down_Genes_", Sys.Date(), ".", input$extPlot6GObarplot2, sep = "")
@@ -4025,8 +4167,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GO:mapplot1
+
   output$DownloadGOmapplot1 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Mapplot_Up_Genes_", Sys.Date(), ".", input$extPlot6GOmapplot1, sep = "")
@@ -4044,8 +4185,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GO:mapplot2
+
   output$DownloadGOmapplot2 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Mapplot_Down_Genes_", Sys.Date(), ".", input$extPlot6GOmapplot2, sep = "")
@@ -4063,8 +4203,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载KEGG:dotplot1
+
   output$DownloadKEGGdotplot1 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Dotplot_Up_Genes_", Sys.Date(), ".", input$extPlot6KEGGdotplot1, sep = "")
@@ -4081,8 +4220,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载KEGG:dotplot2
+
   output$DownloadKEGGdotplot2 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Dotplot_Down_Genes_", Sys.Date(), ".", input$extPlot6KEGGdotplot2, sep = "")
@@ -4099,8 +4237,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载KEGG:barplot1
+
   output$DownloadKEGGbarplot1 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Barplot_Up_Genes_", Sys.Date(), ".", input$extPlot6KEGGbarplot1, sep = "")
@@ -4117,8 +4254,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载KEGG:barplot2
+
   output$DownloadKEGGbarplot2 <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Barplot_Down_Genes_", Sys.Date(), ".", input$extPlot6KEGGbarplot2, sep = "")
@@ -4135,8 +4271,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GSEA:gseaplot
+
   output$Downloadgseaplot <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_gseaplot_", Sys.Date(), ".", input$extPlot6gseaplot, sep = "")
@@ -4155,8 +4290,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GSEA:dotplot
+
   output$DownloadGSEAdotplot <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Dotplot_", Sys.Date(), ".", input$extPlot6GSEAdotplot, sep = "")
@@ -4173,8 +4307,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # 下载GSEA:ridgeplot
+
   output$DownloadGSEAridgeplot <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Ridgeplot_", Sys.Date(), ".", input$extPlot6GSEAridgeplot, sep = "")
@@ -4191,8 +4324,7 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  #下载motif表格
+
   output$downloadmotifEnrichmentTable1  <- downloadHandler(
     filename = function() {
       paste("upregulated_peaks_motif_enrichment_", Sys.Date(), ".csv", sep = "")
@@ -4209,8 +4341,7 @@ server <- function(input, output, session) {
       write.csv(values$down_pv, file, row.names = FALSE)
     }
   )
-  
-  #下载motif热图
+
   output$Downloadmotifplot1 <- downloadHandler(
     filename = function() {
       paste("upregulated_peaks_motif_heatmap_", Sys.Date(), ".", input$extPlot71, sep = "")
@@ -4266,33 +4397,34 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  #----------------清空变量--------------------
+
   cleanFunction <- function(fromDataInput) {
     if (fromDataInput){
-      #step1图像
+      #step1
+      values$color_map_list <- list()
+      #step1
       values$coveragePlots <- list()
       output$covplot <- renderUI({ NULL })
       values$profilePlots <- list()
       output$profileplot <- renderUI({ NULL })
-      #step2过滤
-      updateTabsetPanel(session, "datapreview", selected = "Before Filter")
-      #step2分组
+      #step2
+      updateTabsetPanel(session, "datapreview", selected = "Before Filtering")
+      #step2
       values$groups <- list()
       values$groupCount <- 0
       updateSelectizeInput(session, "samples", selected = NULL)
       updateTextInput(session, "groupName", value = "")
       #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filter")
+      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      output$summaryText <- renderText({ NULL })
+      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
       output$deseqResult2 <- DT::renderDataTable({ NULL })
       output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
+          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
       #step4
@@ -4319,11 +4451,10 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
+      shinyjs::disable("step10")
       shinyjs::disable("step11")
       shinyjs::disable("step12")
       shinyjs::disable("step21")
-      shinyjs::disable("step312")
       shinyjs::disable("step2_to_step3")
       shinyjs::disable("step32")
       shinyjs::disable("step31")
@@ -4331,7 +4462,6 @@ server <- function(input, output, session) {
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
             $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
@@ -4344,20 +4474,19 @@ server <- function(input, output, session) {
     }
   }
   
-  #step21过滤按钮
   clean_filter <- function(fromDataInput) {
     if (fromDataInput){
       #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filter")
+      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      output$summaryText <- renderText({ NULL })
+      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
       output$deseqResult2 <- DT::renderDataTable({ NULL })
       output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
+          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
       #step4
@@ -4384,14 +4513,12 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
-      shinyjs::disable("step312")
+      shinyjs::disable("step31")
       shinyjs::disable("step32")
       shinyjs::disable("step4")
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
             $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
@@ -4404,20 +4531,20 @@ server <- function(input, output, session) {
     }
   }
   
-  #step2_to_step3分组
-  clean_group <- function(fromDataInput) {
+  #clean
+  clean_group1 <- function(fromDataInput) {
     if (fromDataInput){
       #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filter")
+      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      output$summaryText <- renderText({ NULL })
+      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
       output$deseqResult2 <- DT::renderDataTable({ NULL })
       output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
+          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
       #step4
@@ -4444,16 +4571,15 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
-      shinyjs::disable("step312")
+      shinyjs::disable("step31")
       shinyjs::disable("step32")
       shinyjs::disable("step4")
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
+            $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
             $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
             $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
             $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
@@ -4463,17 +4589,20 @@ server <- function(input, output, session) {
     }
   }
   
-  #step312差异结果
-  clean_DAR <- function(fromDataInput) {
+  #step2_to_step3
+  clean_group2 <- function(fromDataInput) {
     if (fromDataInput){
       #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filter")
+      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
+      output$dynamic_tabs_step3 <- renderUI({ NULL })
+      # output$summaryText <- renderText({ NULL })
+      output$deseqResult <- DT::renderDataTable({ NULL })
       output$deseqResult2 <- DT::renderDataTable({ NULL })
       output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
+          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
       #step4
@@ -4500,12 +4629,12 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
+      shinyjs::disable("step31")
+      shinyjs::disable("step32")
       shinyjs::disable("step4")
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
             $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
@@ -4517,7 +4646,59 @@ server <- function(input, output, session) {
     }
   }
   
-  #step32差异结果过滤
+  #step31
+  clean_DAR <- function(fromDataInput) {
+    if (fromDataInput){
+      #step3
+      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
+      output$deseqResult2 <- DT::renderDataTable({ NULL })
+      output$filteredResult <- DT::renderDataTable({ NULL })
+      if (!is.null(values$deseqResultList)) {
+        for (comp_name in names(values$deseqResultList)) {
+          output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
+          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
+        }
+      }
+      #step4
+      output$annotationTable <- DT::renderDataTable({ NULL })
+      values$peakAnnoReady <- FALSE
+      #step5
+      values$DVReady <- FALSE
+      output$upgenes_table <- DT::renderDataTable({ NULL })
+      output$downgenes_table <- DT::renderDataTable({ NULL })
+      updateTextAreaInput(session, "upgenes_list", value = "Please first use the volcano plot to filter upregulated and downregulated genes.")
+      updateTextAreaInput(session, "downgenes_list", value = "Please first use the volcano plot to filter upregulated and downregulated genes.")
+      updateTextAreaInput(session, "upgenes_list2", value = "")
+      updateTextAreaInput(session, "downgenes_list2", value = "")
+      updateTextAreaInput(session, "GSEA_upgenelist", value = "")
+      updateTextAreaInput(session, "GSEA_downgenelist", value = "")
+      updateTextAreaInput(session, "upgenes_list3", value = "")
+      updateTextAreaInput(session, "downgenes_list3", value = "")
+      #step6
+      output$dynamic_tabs <- renderUI({ NULL })
+      output$enrichment_result_table_up <- DT::renderDataTable({ NULL })
+      output$enrichment_result_table_down <- DT::renderDataTable({ NULL })
+      #step7
+      output$motifEnrichmentTable1 <- DT::renderDataTable({ NULL })
+      output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
+      output$motifplot1 <- renderPlot({ NULL })
+      output$motifplot2 <- renderPlot({ NULL })
+      shinyjs::disable("step4")
+      shinyjs::disable("step51")
+      shinyjs::disable("step6")
+      shinyjs::disable("step7")
+      shinyjs::runjs('
+        $(document).ready(function(){
+            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+        });
+      ')
+    }
+  }
+  
+  #step32
   clean_DRF <- function(fromDataInput) {
     if (fromDataInput){
       #step4
@@ -4544,11 +4725,9 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
             $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
@@ -4559,7 +4738,7 @@ server <- function(input, output, session) {
     }
   }
   
-  #step4注释
+  #step4
   clean_peakanno <- function(fromDataInput) {
     if (fromDataInput){
       #step5
@@ -4583,10 +4762,8 @@ server <- function(input, output, session) {
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
       output$motifplot2 <- renderPlot({ NULL })
-      #禁用按钮
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      #侧边栏更新
       shinyjs::runjs('
         $(document).ready(function(){
             $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
@@ -4596,7 +4773,7 @@ server <- function(input, output, session) {
     }
   }
   
-  #step5差异可视化
+  #step5
   clean_DV <- function(fromDataInput) {
     if (fromDataInput){
       #step6
@@ -4611,7 +4788,7 @@ server <- function(input, output, session) {
     }
   }
   
-  #step6富集分析
+  #step6
   clean_enrichment <- function(fromDataInput) {
     if (fromDataInput){
       #step6
@@ -4622,7 +4799,7 @@ server <- function(input, output, session) {
     }
   }
   
-  #step7 motif富集分析
+  #step7 motif
   clean_motif <- function(fromDataInput) {
     if (fromDataInput){
       output$motifplot1 <- renderPlot({NULL})

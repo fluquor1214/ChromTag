@@ -5,8 +5,8 @@ library(shinycssloaders)
 library(shinyjs)
 library(shinyBS)
 library(DT)
-library(DESeq2)     
-library(tidyverse) 
+library(DESeq2)
+library(tidyverse)
 library(GenomicRanges)
 library(ChIPseeker)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
@@ -37,43 +37,43 @@ library(TFBSTools)
 library(enrichplot)
 library(digest)
 library(grid)
-
-example_data_dir <- "sample.csv"
-cache_dir <- "extdata/"
-insects_pwms_dir <- "extdata/insects_pwms.rds"
-vertebrates_pwms_dir <- "extdata/vertebrates_pwms.rds"
-up_sinse_rds_dir <- "extdata/up_sinse.rds"
-down_sinse_rds_dir <- "extdata/down_sinse.rds"
-
-h_human <- read.gmt("extdata/h.all.v2024.1.Hs.symbols.gmt")
-msigdb_human <- read.gmt("extdata/msigdb.v2024.1.Hs.symbols.gmt")
-c1_human <- read.gmt("extdata/c1.all.v2024.1.Hs.symbols.gmt")
-c2_human <- read.gmt("extdata/c2.all.v2024.1.Hs.symbols.gmt")
-c3_human <- read.gmt("extdata/c3.all.v2024.1.Hs.symbols.gmt")
-c4_human <- read.gmt("extdata/c4.all.v2024.1.Hs.symbols.gmt")
-c5_human <- read.gmt("extdata/c5.all.v2024.1.Hs.symbols.gmt")
-c6_human <- read.gmt("extdata/c6.all.v2024.1.Hs.symbols.gmt")
-c7_human <- read.gmt("extdata/c7.all.v2024.1.Hs.symbols.gmt")
-c8_human <- read.gmt("extdata/c8.all.v2024.1.Hs.symbols.gmt")
-
-mh_mouse <- read.gmt("extdata/mh.all.v2024.1.Mm.symbols.gmt")
-m1_mouse <- read.gmt("extdata/m1.all.v2024.1.Mm.symbols.gmt")
-m2_mouse <- read.gmt("extdata/m2.all.v2024.1.Mm.symbols.gmt")
-m3_mouse <- read.gmt("extdata/m3.all.v2024.1.Mm.symbols.gmt")
-m5_mouse <- read.gmt("extdata/m5.all.v2024.1.Mm.symbols.gmt")
-m8_mouse <- read.gmt("extdata/m8.all.v2024.1.Mm.symbols.gmt")
-msigdb_mouse <- read.gmt("extdata/msigdb.v2024.1.Mm.symbols.gmt")
+library(colourpicker)
 
 options(shiny.maxRequestSize = 100000 * 1024 ^ 2)
 
 options(error = NULL)
+
+#plot color
+is_hex_color <- function(x) {
+  is.character(x) && length(x) == 1 && grepl("^#[A-Fa-f0-9]{6}$", x)
+}
+get_sample_color <- function(sample, cmap) {
+  col <- cmap[[as.character(sample)]]
+  if (is.null(col) || !is_hex_color(col)) NULL else col
+}
+force_plot_color <- function(p, col_hex) {
+  p$scales$scales <- Filter(
+    function(s) !(any(s$aesthetics %in% c("fill", "colour", "color"))),
+    p$scales$scales
+  )
+  for (i in seq_along(p$layers)) {
+    lay <- p$layers[[i]]
+    if (!is.null(lay$mapping$fill))   lay$mapping$fill   <- NULL
+    if (!is.null(lay$mapping$colour)) lay$mapping$colour <- NULL
+    if (!is.null(lay$mapping$color))  lay$mapping$color  <- NULL
+    lay$aes_params$fill   <- col_hex
+    lay$aes_params$colour <- col_hex
+    p$layers[[i]] <- lay
+  }
+  p + guides(fill="none", colour="none", color="none")
+}
 
 mytheme <- fresh::create_theme(
   fresh::adminlte_color(
     light_blue = "#6aa7a6"
   ),
   fresh::adminlte_sidebar(
-    width = "250px",
+    width = "265px",
     dark_bg = "#5e6364",
     dark_hover_color = "#FFF",
     dark_color = "#FFF"
@@ -709,15 +709,14 @@ enhancedVolcano <- function(
       }
       
       plot <- plot + geom_text_repel(
-        # 修改数据筛选条件（关键修改点）
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
-                        (toptable[[x]] < -FCcutoff1 |  # 左侧阈值
-                           toptable[[x]] > FCcutoff2)),   # 右侧阈值
+                        (toptable[[x]] < -FCcutoff1 |
+                           toptable[[x]] > FCcutoff2)),
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |  # 同步修改
-                                toptable[[x]] > FCcutoff2))[["lab"]]), # 同步修改
+                             (toptable[[x]] < -FCcutoff1 |
+                                toptable[[x]] > FCcutoff2))[["lab"]]),
         xlim = c(NA, NA),
         ylim = c(NA, NA),
         size = labSize,
@@ -779,12 +778,12 @@ enhancedVolcano <- function(
       plot <- plot + geom_text(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
-                        (toptable[[x]] < -FCcutoff1 |  # 左侧阈值
-                           toptable[[x]] > FCcutoff2)),   # 右侧阈值
+                        (toptable[[x]] < -FCcutoff1 |
+                           toptable[[x]] > FCcutoff2)),
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |  # 同步修改
-                                toptable[[x]] > FCcutoff2))[["lab"]]), # 同步修改
+                             (toptable[[x]] < -FCcutoff1 |
+                                toptable[[x]] > FCcutoff2))[["lab"]]),
         size = labSize,
         check_overlap = TRUE,
         colour = labCol,
@@ -810,12 +809,12 @@ enhancedVolcano <- function(
       plot <- plot + geom_label_repel(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
-                        (toptable[[x]] < -FCcutoff1 |  # 左侧阈值
-                           toptable[[x]] > FCcutoff2)),   # 右侧阈值
+                        (toptable[[x]] < -FCcutoff1 |
+                           toptable[[x]] > FCcutoff2)),
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |  # 同步修改
-                                toptable[[x]] > FCcutoff2))[["lab"]]), # 同步修改
+                             (toptable[[x]] < -FCcutoff1 |
+                                toptable[[x]] > FCcutoff2))[["lab"]]),
         xlim = c(NA, NA),
         ylim = c(NA, NA),
         size = labSize,
@@ -877,12 +876,12 @@ enhancedVolcano <- function(
       plot <- plot + geom_label(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
-                        (toptable[[x]] < -FCcutoff1 |  # 左侧阈值
-                           toptable[[x]] > FCcutoff2)),   # 右侧阈值
+                        (toptable[[x]] < -FCcutoff1 | 
+                           toptable[[x]] > FCcutoff2)),   
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |  # 同步修改
-                                toptable[[x]] > FCcutoff2))[["lab"]]), # 同步修改
+                             (toptable[[x]] < -FCcutoff1 |  
+                                toptable[[x]] > FCcutoff2))[["lab"]]), 
         size = labSize,
         colour = labCol,
         fontface = labFace,
@@ -1406,7 +1405,6 @@ specific_up_peaks <<- c(
   "chr3-37242030-37245767"
 )
 
-# 创建一个包含所有的 down_peak 数据的向量
 specific_down_peaks <<- c(
   "chr7-154746354-154754198",
   "chr11-20155235-20165969",
