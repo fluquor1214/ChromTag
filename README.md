@@ -11,7 +11,7 @@ The Shiny application is additionally hosted at https://xulabgdpu.cpolar.top/Chr
 
 ## Local Installation (Optional)
 
-### 1. Download Linkage Source Code
+### 1. Download ChromTag Source Code
 You can obtain the source code in either of the following ways:
   + Clone the GitHub repository:
     ```bash
