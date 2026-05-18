@@ -38,6 +38,7 @@ library(enrichplot)
 library(digest)
 library(grid)
 library(colourpicker)
+# library(stageR)
 
 options(shiny.maxRequestSize = 100000 * 1024 ^ 2)
 
@@ -779,10 +780,10 @@ enhancedVolcano <- function(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
                         (toptable[[x]] < -FCcutoff1 |
-                           toptable[[x]] > FCcutoff2)),
+                           toptable[[x]] > FCcutoff2)),  
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |
+                             (toptable[[x]] < -FCcutoff1 | 
                                 toptable[[x]] > FCcutoff2))[["lab"]]),
         size = labSize,
         check_overlap = TRUE,
@@ -810,11 +811,11 @@ enhancedVolcano <- function(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
                         (toptable[[x]] < -FCcutoff1 |
-                           toptable[[x]] > FCcutoff2)),
+                           toptable[[x]] > FCcutoff2)), 
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |
-                                toptable[[x]] > FCcutoff2))[["lab"]]),
+                             (toptable[[x]] < -FCcutoff1 | 
+                                toptable[[x]] > FCcutoff2))[["lab"]]), 
         xlim = c(NA, NA),
         ylim = c(NA, NA),
         size = labSize,
@@ -877,11 +878,11 @@ enhancedVolcano <- function(
         data = subset(toptable,
                       toptable[[y]] < pCutoff &
                         (toptable[[x]] < -FCcutoff1 | 
-                           toptable[[x]] > FCcutoff2)),   
+                           toptable[[x]] > FCcutoff2)),  
         aes(label = subset(toptable,
                            toptable[[y]] < pCutoff &
-                             (toptable[[x]] < -FCcutoff1 |  
-                                toptable[[x]] > FCcutoff2))[["lab"]]), 
+                             (toptable[[x]] < -FCcutoff1 |
+                                toptable[[x]] > FCcutoff2))[["lab"]]),
         size = labSize,
         colour = labCol,
         fontface = labFace,
@@ -1607,3 +1608,505 @@ specific_down_peaks <<- c(
   "chr1-9268264-9274025",
   "chr18-8780928-8789214"
 )
+
+enhancedVolcano2 <- function(
+    toptable,
+    lab,
+    x,
+    y,
+    omnibus_padj = "omnibus_padj",
+    posthoc_padj_across_comparisons = "posthoc_padj_across_comparisons",
+    omnibusCutoff = 0.05,
+    posthocCutoff = 0.05,
+    selectLab = NULL,
+    xlim = c(min(toptable[[x]], na.rm = TRUE) - 1.5,
+             max(toptable[[x]], na.rm = TRUE) + 1.5),
+    ylim = c(0, max(-log10(toptable[[y]]), na.rm = TRUE) + 5),
+    xlab = bquote(~Log[2]~ "fold change"),
+    ylab = bquote(~-Log[10]~italic(P)),
+    axisLabSize = 18,
+    title = "Volcano plot",
+    subtitle = "Stage-wise volcano plot",
+    caption = NULL,
+    titleLabSize = 18,
+    subtitleLabSize = 14,
+    captionLabSize = 14,
+    pCutoff = 10e-6,
+    pCutoffCol = y,
+    FCcutoff1 = 1.0,
+    FCcutoff2 = 1.0,
+    cutoffLineType = "longdash",
+    cutoffLineCol = "black",
+    cutoffLineWidth = 0.4,
+    pointSize = 2.0,
+    labSize = 5.0,
+    labCol = "black",
+    labFace = "plain",
+    boxedLabels = FALSE,
+    parseLabels = FALSE,
+    shape = 19,
+    col = c("grey70", "forestgreen", "royalblue", "orange", "red2"),
+    colAlpha = 1/2,
+    legendLabels = c(
+      "NS",
+      expression(Log[2]~FC~only),
+      "p-value only",
+      expression(p-value~and~log[2]~FC),
+      "stage-wise significant"
+    ),
+    legendPosition = "top",
+    legendLabSize = 14,
+    legendIconSize = 5.0,
+    legendDropLevels = TRUE,
+    drawConnectors = FALSE,
+    widthConnectors = 0.5,
+    typeConnectors = "closed",
+    endsConnectors = "first",
+    lengthConnectors = grid::unit(0.01, "npc"),
+    colConnectors = "grey10",
+    max.overlaps = 15,
+    min.segment.length = 0,
+    directionConnectors = "both",
+    arrowheads = TRUE,
+    hline = NULL,
+    hlineType = "longdash",
+    hlineCol = "black",
+    hlineWidth = 0.4,
+    vline = NULL,
+    vlineType = "longdash",
+    vlineCol = "black",
+    vlineWidth = 0.4,
+    gridlines.major = TRUE,
+    gridlines.minor = TRUE,
+    border = "partial",
+    borderWidth = 0.8,
+    borderColour = "black",
+    raster = FALSE
+) {
+  
+  required_pkgs <- c("ggplot2", "ggrepel", "grid")
+  missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_pkgs) > 0) {
+    stop(
+      "Please install required package(s): ",
+      paste(missing_pkgs, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  
+  toptable <- as.data.frame(toptable)
+  
+  required_cols <- c(x, y, pCutoffCol, omnibus_padj, posthoc_padj_across_comparisons)
+  missing_cols <- required_cols[!required_cols %in% colnames(toptable)]
+  
+  if (length(missing_cols) > 0) {
+    stop(
+      "The following column(s) are missing from toptable: ",
+      paste(missing_cols, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  
+  if (!is.numeric(toptable[[x]])) {
+    stop(paste0(x, " is not numeric!"), call. = FALSE)
+  }
+  
+  if (!is.numeric(toptable[[y]])) {
+    stop(paste0(y, " is not numeric!"), call. = FALSE)
+  }
+  
+  if (!is.numeric(toptable[[pCutoffCol]])) {
+    stop(paste0(pCutoffCol, " is not numeric!"), call. = FALSE)
+  }
+  
+  if (!is.numeric(toptable[[omnibus_padj]])) {
+    stop(paste0(omnibus_padj, " is not numeric!"), call. = FALSE)
+  }
+  
+  if (!is.numeric(toptable[[posthoc_padj_across_comparisons]])) {
+    stop(paste0(posthoc_padj_across_comparisons, " is not numeric!"), call. = FALSE)
+  }
+  
+  if (length(col) != 5) {
+    stop("Argument 'col' must contain 5 colors: NS, FC, P, FC_P, Stagewise_FC_P.", call. = FALSE)
+  }
+  
+  if (!(length(shape) %in% c(1, 5))) {
+    stop("Argument 'shape' must be either a single value or a vector of 5 values.", call. = FALSE)
+  }
+  
+  if (raster) {
+    has_ggrastr <- requireNamespace("ggrastr", quietly = TRUE)
+    if (!has_ggrastr) {
+      warning("raster disabled, required package 'ggrastr' is not installed", call. = FALSE)
+      raster <- FALSE
+    }
+  }
+  
+  # Avoid -log10(NA), -log10(0), and -log10(negative values)
+  toptable[[y]][is.na(toptable[[y]])] <- 1
+  toptable[[y]][toptable[[y]] < 0] <- NA
+  
+  if (any(toptable[[y]] == 0, na.rm = TRUE)) {
+    nonzero_p <- toptable[[y]][!is.na(toptable[[y]]) & toptable[[y]] > 0]
+    
+    if (length(nonzero_p) > 0) {
+      replacement_p <- min(nonzero_p, na.rm = TRUE) * 10^-1
+    } else {
+      replacement_p <- .Machine$double.xmin
+    }
+    
+    warning(
+      "One or more p-values is 0. Converting to 10^-1 * current lowest non-zero p-value.",
+      call. = FALSE
+    )
+    
+    toptable[[y]][!is.na(toptable[[y]]) & toptable[[y]] == 0] <- replacement_p
+  }
+  
+  # Basic pass/fail criteria
+  fc_pass <- !is.na(toptable[[x]]) &
+    (toptable[[x]] < -FCcutoff1 | toptable[[x]] > FCcutoff2)
+  
+  p_pass <- !is.na(toptable[[pCutoffCol]]) &
+    toptable[[pCutoffCol]] < pCutoff
+  
+  omnibus_pass <- !is.na(toptable[[omnibus_padj]]) &
+    toptable[[omnibus_padj]] < omnibusCutoff
+  
+  posthoc_pass <- !is.na(toptable[[posthoc_padj_across_comparisons]]) &
+    toptable[[posthoc_padj_across_comparisons]] < posthocCutoff
+  
+  stagewise_pass <- fc_pass & p_pass & omnibus_pass & posthoc_pass
+  
+  # Significance classification
+  toptable$Sig <- "NS"
+  toptable$Sig[fc_pass] <- "FC"
+  toptable$Sig[p_pass] <- "P"
+  toptable$Sig[p_pass & fc_pass] <- "FC_P"
+  toptable$Sig[stagewise_pass] <- "Stagewise_FC_P"
+  
+  toptable$Sig <- factor(
+    toptable$Sig,
+    levels = c("NS", "FC", "P", "FC_P", "Stagewise_FC_P")
+  )
+  
+  toptable$stagewise_pass <- stagewise_pass
+  toptable$lab <- lab
+  toptable$xvals <- toptable[[x]]
+  toptable$yvals <- toptable[[y]]
+  
+  if (!is.null(selectLab)) {
+    lab_new <- rep(NA, nrow(toptable))
+    selected_index <- which(toptable$lab %in% selectLab)
+    lab_new[selected_index] <- toptable$lab[selected_index]
+    toptable$lab <- lab_new
+  }
+  
+  if (is.null(caption)) {
+    caption <- paste0(
+      "total = ", nrow(toptable),
+      "; stage-wise significant = ",
+      "p < ", pCutoff,
+      ", log2FC < -", FCcutoff1,
+      " or > ", FCcutoff2,
+      ", omnibus padj < ", omnibusCutoff,
+      ", post-hoc padj < ", posthocCutoff
+    )
+  }
+  
+  th <- ggplot2::theme_bw(base_size = 24) +
+    ggplot2::theme(
+      legend.background = ggplot2::element_rect(),
+      plot.title = ggplot2::element_text(
+        angle = 0,
+        size = titleLabSize,
+        face = "bold",
+        vjust = 1
+      ),
+      plot.subtitle = ggplot2::element_text(
+        angle = 0,
+        size = subtitleLabSize,
+        face = "plain",
+        vjust = 1
+      ),
+      plot.caption = ggplot2::element_text(
+        angle = 0,
+        size = captionLabSize,
+        face = "plain",
+        vjust = 1
+      ),
+      axis.text.x = ggplot2::element_text(
+        angle = 0,
+        size = axisLabSize,
+        vjust = 1
+      ),
+      axis.text.y = ggplot2::element_text(
+        angle = 0,
+        size = axisLabSize,
+        vjust = 0.5
+      ),
+      axis.title = ggplot2::element_text(size = axisLabSize),
+      legend.position = legendPosition,
+      legend.key = ggplot2::element_blank(),
+      legend.key.size = grid::unit(0.5, "cm"),
+      legend.text = ggplot2::element_text(size = legendLabSize),
+      legend.title = ggplot2::element_blank()
+    )
+  
+  colour_values <- c(
+    NS = col[1],
+    FC = col[2],
+    P = col[3],
+    FC_P = col[4],
+    Stagewise_FC_P = col[5]
+  )
+  
+  colour_labels <- c(
+    NS = legendLabels[1],
+    FC = legendLabels[2],
+    P = legendLabels[3],
+    FC_P = legendLabels[4],
+    Stagewise_FC_P = legendLabels[5]
+  )
+  
+  if (raster) {
+    point_layer <- ggrastr::geom_point_rast(
+      ggplot2::aes(color = Sig),
+      alpha = colAlpha,
+      shape = if (length(shape) == 1) shape else 19,
+      size = pointSize,
+      na.rm = TRUE
+    )
+  } else {
+    if (length(shape) == 1) {
+      point_layer <- ggplot2::geom_point(
+        ggplot2::aes(color = Sig),
+        alpha = colAlpha,
+        shape = shape,
+        size = pointSize,
+        na.rm = TRUE
+      )
+    } else {
+      toptable$ShapeSig <- toptable$Sig
+      
+      point_layer <- ggplot2::geom_point(
+        ggplot2::aes(color = Sig, shape = ShapeSig),
+        alpha = colAlpha,
+        size = pointSize,
+        na.rm = TRUE
+      )
+    }
+  }
+  
+  plot <- ggplot2::ggplot(
+    toptable,
+    ggplot2::aes(x = xvals, y = -log10(yvals))
+  ) +
+    th +
+    point_layer +
+    ggplot2::scale_color_manual(
+      values = colour_values,
+      labels = colour_labels,
+      drop = legendDropLevels
+    ) +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(
+        order = 1,
+        override.aes = list(size = legendIconSize)
+      )
+    )
+  
+  if (!raster && length(shape) == 5) {
+    shape_values <- c(
+      NS = shape[1],
+      FC = shape[2],
+      P = shape[3],
+      FC_P = shape[4],
+      Stagewise_FC_P = shape[5]
+    )
+    
+    plot <- plot +
+      ggplot2::scale_shape_manual(
+        values = shape_values,
+        labels = colour_labels,
+        drop = legendDropLevels
+      ) +
+      ggplot2::guides(
+        shape = ggplot2::guide_legend(
+          order = 2,
+          override.aes = list(size = legendIconSize)
+        )
+      )
+  }
+  
+  plot <- plot +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    ggplot2::xlim(xlim[1], xlim[2]) +
+    ggplot2::ylim(ylim[1], ylim[2]) +
+    ggplot2::geom_vline(
+      xintercept = c(-FCcutoff1, FCcutoff2),
+      linetype = cutoffLineType,
+      colour = cutoffLineCol,
+      linewidth = cutoffLineWidth
+    ) +
+    ggplot2::geom_hline(
+      yintercept = -log10(pCutoff),
+      linetype = cutoffLineType,
+      colour = cutoffLineCol,
+      linewidth = cutoffLineWidth
+    ) +
+    ggplot2::labs(
+      title = title,
+      subtitle = subtitle,
+      caption = caption
+    )
+  
+  if (!is.null(vline)) {
+    plot <- plot +
+      ggplot2::geom_vline(
+        xintercept = vline,
+        linetype = vlineType,
+        colour = vlineCol,
+        linewidth = vlineWidth
+      )
+  }
+  
+  if (!is.null(hline)) {
+    plot <- plot +
+      ggplot2::geom_hline(
+        yintercept = -log10(hline),
+        linetype = hlineType,
+        colour = hlineCol,
+        linewidth = hlineWidth
+      )
+  }
+  
+  if (border == "full") {
+    plot <- plot +
+      ggplot2::theme(
+        panel.border = ggplot2::element_rect(
+          colour = borderColour,
+          fill = NA,
+          linewidth = borderWidth
+        )
+      )
+  } else if (border == "partial") {
+    plot <- plot +
+      ggplot2::theme(
+        axis.line = ggplot2::element_line(
+          linewidth = borderWidth,
+          colour = borderColour
+        ),
+        panel.border = ggplot2::element_blank(),
+        panel.background = ggplot2::element_blank()
+      )
+  } else {
+    stop("Unrecognised value passed to 'border'. Must be 'full' or 'partial'.", call. = FALSE)
+  }
+  
+  if (gridlines.major) {
+    plot <- plot + ggplot2::theme(panel.grid.major = ggplot2::element_line())
+  } else {
+    plot <- plot + ggplot2::theme(panel.grid.major = ggplot2::element_blank())
+  }
+  
+  if (gridlines.minor) {
+    plot <- plot + ggplot2::theme(panel.grid.minor = ggplot2::element_line())
+  } else {
+    plot <- plot + ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+  }
+  
+  # Label data
+  if (!is.null(selectLab)) {
+    label_data <- toptable[!is.na(toptable$lab), , drop = FALSE]
+  } else {
+    label_data <- toptable[toptable$stagewise_pass & !is.na(toptable$lab), , drop = FALSE]
+  }
+  
+  if (nrow(label_data) > 0) {
+    
+    if (drawConnectors) {
+      if (arrowheads) {
+        arr <- grid::arrow(
+          length = lengthConnectors,
+          type = typeConnectors,
+          ends = endsConnectors
+        )
+      } else {
+        arr <- NULL
+      }
+      
+      if (!boxedLabels) {
+        plot <- plot +
+          ggrepel::geom_text_repel(
+            data = label_data,
+            ggplot2::aes(label = lab),
+            xlim = c(NA, NA),
+            ylim = c(NA, NA),
+            size = labSize,
+            segment.color = colConnectors,
+            segment.size = widthConnectors,
+            arrow = arr,
+            colour = labCol,
+            fontface = labFace,
+            parse = parseLabels,
+            na.rm = TRUE,
+            direction = directionConnectors,
+            max.overlaps = max.overlaps,
+            min.segment.length = min.segment.length
+          )
+      } else {
+        plot <- plot +
+          ggrepel::geom_label_repel(
+            data = label_data,
+            ggplot2::aes(label = lab),
+            xlim = c(NA, NA),
+            ylim = c(NA, NA),
+            size = labSize,
+            segment.color = colConnectors,
+            segment.size = widthConnectors,
+            arrow = arr,
+            colour = labCol,
+            fontface = labFace,
+            parse = parseLabels,
+            na.rm = TRUE,
+            direction = directionConnectors,
+            max.overlaps = max.overlaps,
+            min.segment.length = min.segment.length
+          )
+      }
+      
+    } else {
+      if (!boxedLabels) {
+        plot <- plot +
+          ggplot2::geom_text(
+            data = label_data,
+            ggplot2::aes(label = lab),
+            size = labSize,
+            check_overlap = TRUE,
+            colour = labCol,
+            fontface = labFace,
+            parse = parseLabels,
+            na.rm = TRUE
+          )
+      } else {
+        plot <- plot +
+          ggplot2::geom_label(
+            data = label_data,
+            ggplot2::aes(label = lab),
+            size = labSize,
+            colour = labCol,
+            fontface = labFace,
+            parse = parseLabels,
+            na.rm = TRUE
+          )
+      }
+    }
+  }
+  
+  plot <- plot + ggplot2::coord_cartesian(clip = "off")
+  
+  return(plot)
+}

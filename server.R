@@ -106,8 +106,7 @@ server <- function(input, output, session) {
   shinyjs::disable("step51")
   shinyjs::disable("step6")
   shinyjs::disable("step7")
-  
-  # ————————————————————————————
+
   observe({
     if (input$Selectdata == "Upload data" && is.null(input$file)) {
       shinyjs::disable("import")
@@ -116,7 +115,7 @@ server <- function(input, output, session) {
       shinyjs::removeClass("import", "disabled")
     }
   })
-  # ————————————————————————————
+
   observeEvent(input$Selectdata, {
     if (input$Selectdata == "Upload data") {
       output$FileInputs <- renderUI({
@@ -132,9 +131,15 @@ server <- function(input, output, session) {
             code("CSV file"),
             "with ",
             code("genomic regions"),
-            "(chromosome, start, end) and ",
+            "(Chromosome, Start, End) and ",
             code("read counts"),
             " for each sample. Ensure all samples share the same reference genome and species.",
+            style = "font-size:15px;font-style:calibri;color:black;",
+            align = "justify"
+          ),
+          div(
+            code("Tip:"),
+            "At least three biological replicates per group are recommended for reliable statistical inference.",
             style = "font-size:15px;font-style:calibri;color:black;",
             align = "justify"
           )
@@ -198,12 +203,10 @@ server <- function(input, output, session) {
           output$FileInputs <- renderUI({
             tagList(
               div(
-                "The example dataset includes CUT&Tag profiles for",
-                code("H3K27me3"),
-                "and",
-                code("H3K4me3"),
-                "from human samples (GSE145187). Each mark contains",
-                code("two biological replicates"),
+                "The example dataset includes",
+                code("H3K27ac"),
+                "ChIP-seq profiles from A549 cells collected at 0 h and 4 h after dexamethasone treatment, obtained from ENCODE (ENCSR783SNV and ENCSR543ZVZ). Each condition contains",
+                code("three biological replicates"),
                 ", and the peaks have been pre-processed into a merged count matrix ready for analysis. You can load this dataset to explore the features and workflow of ChromTag without uploading your own files. ",
                 style = "font-size:15px;font-style:calibri;color:black;",
                 align = "justify"
@@ -289,6 +292,7 @@ server <- function(input, output, session) {
         values$Organism <- Organism
         values$BSgenome <- BSgenome
       }
+
     } else if (input$Selectdata == "Example dataset") {
       values$annoDb <- "org.Hs.eg.db"
       values$txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
@@ -327,14 +331,24 @@ server <- function(input, output, session) {
     shinyjs::runjs(js.3)
   })
   
-  observeEvent(input$step32, {
+  observeEvent(input$step31, {
+    req(values$groupCount == 2)
     shinyjs::enable(selector = ".sidebar li a[data-value='step4']")
-    js.4 <- '
-        $(document).ready(function(){
-            $("a[data-value=step4]").css("color", "#E6E7E8");
-        });
-      '
-    shinyjs::runjs(js.4)
+    shinyjs::runjs("
+    $(document).ready(function(){
+      $('a[data-value=step4]').css('color', '#E6E7E8');
+    });
+  ")
+  })
+  
+  observeEvent(input$step32, {
+    req(values$groupCount > 2)
+    shinyjs::enable(selector = ".sidebar li a[data-value='step4']")
+    shinyjs::runjs("
+    $(document).ready(function(){
+      $('a[data-value=step4]').css('color', '#E6E7E8');
+    });
+  ")
   })
   
   observeEvent(input$step4, {
@@ -417,8 +431,7 @@ server <- function(input, output, session) {
       NULL
     }
   })
-  
-  # ------------------------------------
+
   observeEvent(input$step10, {
     req(input$color_sample)
     col <- input$color_hex_picker
@@ -779,218 +792,235 @@ server <- function(input, output, session) {
   
   
   #-----------------Group------------------
+  valid_group_names <- c("Control", "Experimental")
+  
   observe({
     req(values$data)
-    updateSelectInput(
-      session, "samples",
-      choices = colnames(values$data)[4:ncol(values$data)]
+    
+    sample_choices <- colnames(values$data)[4:ncol(values$data)]
+    
+    used_samples <- unique(unlist(values$groups, use.names = FALSE))
+    if (is.null(used_samples)) {
+      used_samples <- character(0)
+    }
+    
+    available_samples <- setdiff(sample_choices, used_samples)
+    
+    updateSelectizeInput(
+      session,
+      "samples",
+      choices = available_samples,
+      selected = NULL,
+      server = TRUE
     )
   })
   
+  
   observeEvent(input$addGroup, {
     req(input$samples, input$groupName)
-    if (input$groupName %in% names(values$groups)) {
-      showNotification("Group name already exists!", type = "error")
-      return()
-    }
 
-    values$groups[[input$groupName]] <- input$samples
-    values$groupCount <- length(values$groups)
-    updateSelectizeInput(session, "samples", selected = NULL)
-    updateTextInput(session, "groupName", value = "")
-  })
-  
-  observeEvent(input$clearGroups, {
-    clean_group1(T)
-    values$groups <- list()
-    values$groupCount <- 0
-  })
-  
-  output$currentGroups <- renderPrint({
-    if (length(values$groups) == 0) {
-      shinyjs::disable("step2_to_step3")
-      return("No groups defined yet.")
-    }
-    shinyjs::enable("step2_to_step3")
-    values$groups
-  })
-  
-  observeEvent(input$step2_to_step3, {
-    req(values$groups) 
-    if (length(values$groups) < 2) {
+    if (!input$groupName %in% valid_group_names) {
       showNotification(
-        "You need to add at least two groups.",
+        "Only Control group and Experimental group are allowed.",
         type = "error",
         duration = 5
       )
       return()
     }
-    clean_group2(T)
-    sendSweetAlert(
-      session = session,
-      title = "Success",
-      text = "Groups have been successfully created.",
-      type = "success"
-    )
-    updateTabItems(session, "menuitem", "step3")
-    shinyjs::enable("step31")
+
+    if (length(values$groups) >= 2 && !input$groupName %in% names(values$groups)) {
+      showNotification(
+        "Only two groups are allowed: one Control group and one Experimental group.",
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+
+    if (input$groupName %in% names(values$groups)) {
+      if (input$groupName == "Experimental") {
+        showNotification(
+          "Experimental group has already been defined. You cannot define two Experimental groups.",
+          type = "error",
+          duration = 5
+        )
+      } else {
+        showNotification(
+          "Control group has already been defined. You cannot define two Control groups.",
+          type = "error",
+          duration = 5
+        )
+      }
+      return()
+    }
+
+    existing_samples <- unique(unlist(values$groups, use.names = FALSE))
+    duplicated_samples <- intersect(input$samples, existing_samples)
+    
+    if (length(duplicated_samples) > 0) {
+      showNotification(
+        paste0(
+          "The following sample(s) have already been assigned to another group: ",
+          paste(duplicated_samples, collapse = ", ")
+        ),
+        type = "error",
+        duration = 8
+      )
+      return()
+    }
+
+    values$groups[[input$groupName]] <- input$samples
+
+    if (all(valid_group_names %in% names(values$groups))) {
+      values$groups <- values$groups[valid_group_names]
+    }
+    
+    values$groupCount <- length(values$groups)
+    
+    updateSelectizeInput(session, "samples", selected = NULL)
+    updateSelectInput(session, "groupName", selected = "Control")
   })
   
-  #----------------------
-  observeEvent(input$step31, {
-    output$dynamic_tabs_step3 <- renderUI({ NULL })
-    if (values$groupCount == 2) {
-      updateTabsetPanel(session, "visualization_tabs")
-      output$dynamic_tabs_step3 <- renderUI({
-        shinydashboard::tabBox(
-          title = shiny::tagList(icon("table"), "Differential Peak Results"),
-          width = 12,
-          selected = "Before Filtering",
-          side = "right",
-          tabsetPanel(
-            id = "analysis_results",
-            tabPanel(
-              shiny::tagList("Before Filtering"),
-              fluidRow(
-                column(9,
-                       # verbatimTextOutput("summaryText"),
-                       DT::dataTableOutput("deseqResult"),
-                       downloadButton(
-                         outputId = "downloadDeseqResult1",
-                         label = "Download"
-                       )
-                ),
-                column(3,
-                       textInput(
-                         inputId = "adjpvalueThreshold",
-                         label = "Adjusted P-value Threshold:",
-                         value = "0.05"
-                       ),
-                       textInput(
-                         inputId = "log2fcThreshold",
-                         label = "Log2 Fold Change Threshold:",
-                         value = "2"
-                       ),
-                       actionButton(
-                         inputId = "step32",
-                         label = "Submit",
-                         icon = icon("check")
-                       )
-                )
-              )
-            ),
-            tabPanel(
-              shiny::tagList("After Filtering"),
-              fluidRow(
-                column(12,
-                       DT::dataTableOutput("deseqResult2"),
-                       downloadButton(
-                         outputId = "downloadDeseqResult2",
-                         label = "Download"
-                       )
-                )
-              )
-            )
-          )
-        )
-      })
-    } else if (values$groupCount > 2) {
-      output$dynamic_tabs_step3 <- renderUI({
-        group_names <- names(values$groups)
-        comparisons <- combn(group_names, 2, simplify = FALSE)
-        tabPanels <- lapply(comparisons, function(comp) {
-          tabPanel(
-            shiny::tagList(comp[1], " vs ", comp[2]),
-            fluidRow(
-              column(12,
-                     # verbatimTextOutput(outputId = paste0("summary_", comp[1], "_vs_", comp[2])),
-                     DT::dataTableOutput(outputId = paste0("deseqResult_", comp[1], "_vs_", comp[2])),
-                     downloadButton(
-                       outputId = paste0("downloadDeseqResult_", comp[1], "_vs_", comp[2]),
-                       label = "Download"
-                     )
-              )
-            )
-          )
-        })
-        comparison_keys <- sapply(comparisons, function(comp) paste(comp, collapse = "_vs_"))
-        comparison_display <- sapply(comparisons, function(comp) paste(comp, collapse = " vs "))
-        shiny::tagList(
-          shinydashboard::tabBox(
-            title = shiny::tagList(icon("table"), "Differential Peak Results"),
-            width = 12,
-            selected = comparison_keys[1],
-            side = "right",
-            do.call(tabsetPanel, c(list(id = "analysis_results"), tabPanels))
-          ),
-          shinydashboard::tabBox(
-            title = shiny::tagList(icon("table"), "Select Comparison and Filtering",
-                                   bsButton("comparisonhelp", label = "", icon = icon("question"), size = "extra-small"),
-                                   bsPopover(
-                                     id = "comparisonhelp", 
-                                     title = "Select Comparison",
-                                     content = "Only one comparison group can be selected for filtering and subsequent analysis.",
-                                     placement = "right", 
-                                     trigger = "hover", 
-                                     options = list(container = "body")
-                                   )
-            ),
-            side = "right",
-            width = 12,
-            tabsetPanel(
-              tabPanel(
-                shiny::tagList("Filtering Result"),
-                fluidRow(
-                  column(3,
-                         selectInput(
-                           inputId = "selectedComparison",
-                           label = "Selected Comparison：",
-                           choices = setNames(comparison_keys, comparison_display),
-                           selected = comparison_keys[1]
-                         ),
-                         textInput(
-                           inputId = "adjpvalueThreshold",
-                           label = "Adjusted P-value Threshold:",
-                           value = "0.05"
-                         ),
-                         textInput(
-                           inputId = "log2fcThreshold",
-                           label = "Log2 Fold Change Threshold:",
-                           value = "2"
-                         ),
-                         actionButton(
-                           inputId = "step32",
-                           label = "Submit",
-                           icon = icon("check")
-                         )
-                  ),
-                  column(9,
-                         DT::dataTableOutput("filteredResult"),
-                         downloadButton(
-                           outputId = "downloadFilteredResult",
-                           label = "Download"
-                         )
-                  )
-                )
-              )
-            )
-          )
-        )
-      })
+  
+  observeEvent(input$clearGroups, {
+    clean_group1(TRUE)
+    
+    values$groups <- list()
+    values$groupCount <- 0
+    
+    updateSelectizeInput(session, "samples", selected = NULL)
+    updateSelectInput(session, "groupName", selected = "Control")
+    
+    shinyjs::disable("step2_to_step3")
+  })
+  
+  
+  output$currentGroups <- renderPrint({
+    if (length(values$groups) == 0) {
+      return("No groups defined yet.")
+    }
+    
+    values$groups
+  })
+  
+  
+  observe({
+    ready_for_step3 <- 
+      length(values$groups) == 2 &&
+      setequal(names(values$groups), valid_group_names) &&
+      all(vapply(values$groups, length, integer(1)) > 0)
+    
+    if (ready_for_step3) {
+      shinyjs::enable("step2_to_step3")
+    } else {
+      shinyjs::disable("step2_to_step3")
     }
   })
   
-  allowStep32 <- reactiveVal(FALSE)
-  observe({
-    if (!allowStep32() && !is.null(input$step32)) {
-      shinyjs::disable("step32")
+  
+  observeEvent(input$step2_to_step3, {
+    req(values$groups)
+
+    if (length(values$groups) != 2) {
+      showNotification(
+        "Please define exactly two groups: one Control group and one Experimental group.",
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+
+    if (!setequal(names(values$groups), valid_group_names)) {
+      showNotification(
+        "The grouping must contain one Control group and one Experimental group.",
+        type = "error",
+        duration = 5
+      )
+      return()
+    }
+
+    group_sizes <- vapply(values$groups, length, integer(1))
+    
+    if (any(group_sizes < 3)) {
+      showNotification(
+        "At least three biological replicates per group are recommended for reliable differential analysis.",
+        type = "warning",
+        duration = 8
+      )
+    }
+
+    values$groups <- values$groups[valid_group_names]
+    values$groupCount <- 2
+    
+    clean_group2(TRUE)
+    
+    sendSweetAlert(
+      session = session,
+      title = "Success",
+      text = "Control and Experimental groups have been successfully created.",
+      type = "success"
+    )
+    
+    updateTabItems(session, "menuitem", "step3")
+    shinyjs::enable("step31")
+  })
+
+  observeEvent(input$step31, {
+    output$dynamic_tabs_step3 <- renderUI({ NULL })
+
+    if (
+      values$groupCount == 2 &&
+      setequal(names(values$groups), c("Control", "Experimental"))
+    ) {
+      
+      output$dynamic_tabs_step3 <- renderUI({
+        fluidRow(
+          column(
+            12,
+            shinydashboard::box(
+              title = shiny::tagList(icon("table"), "Differential Peak Results"),
+              width = 12,
+              status = "primary",
+              collapsible = TRUE,
+              DT::dataTableOutput("deseqResult"),
+              downloadButton(
+                outputId = "downloadDeseqResult1",
+                label = "Download"
+              )
+            )
+          )
+        )
+      })
+      
+    } else if (values$groupCount > 2) {
+
+      output$dynamic_tabs_step3 <- renderUI({ NULL })
+      
+      showNotification(
+        "Multi-group differential analysis is not available in the current version. Please define only one Control group and one Experimental group.",
+        type = "error",
+        duration = 6
+      )
+      
+      return()
+      
+    } else {
+      
+      output$dynamic_tabs_step3 <- renderUI({ NULL })
+      
+      showNotification(
+        "Please define one Control group and one Experimental group before running differential analysis.",
+        type = "error",
+        duration = 5
+      )
+      
+      return()
     }
   })
   
   #-----------Peak Differential Analysis------------
   observeEvent(input$step31, {
     req(length(values$groups) > 0)
-    allowStep32(FALSE)
     clean_DAR(T)
     dataS <- values$dataS
     showModal(modalDialog(
@@ -1048,7 +1078,7 @@ server <- function(input, output, session) {
         output$deseqResult <- DT::renderDataTable({
           DT::datatable(
             merged_countMatDiff,
-            colnames = new_colnames, 
+            colnames = new_colnames,
             selection = 'none',
             extensions = 'FixedHeader',
             options = list(
@@ -1060,35 +1090,153 @@ server <- function(input, output, session) {
             )
           )
         })
+        shinyjs::enable("step4")
         
         values$deseqResult <- values$deseqResult %>%
           filter(!is.na(padj) & padj != "")
         
       } else if (values$groupCount > 2) {
+        
         group_names <- levels(values$condition)
         comparisons <- combn(group_names, 2, simplify = FALSE)
+        comparison_names <- sapply(comparisons, function(comp) {
+          paste(comp, collapse = "_vs_")
+        })
         
-        results_list <- list()      
+        results_list <- list()
         merged_results_list <- list()
+
+        filtered_masterPeak_df <- as.data.frame(filtered_masterPeak)
+        filtered_masterPeak_info <- filtered_masterPeak_df[, c("seqnames", "start", "end")]
         
-        for (comp in comparisons) {
-          comp_name <- paste(comp, collapse = "_vs_")
-          comp_res <- results(DDS, contrast = c("condition", comp[1], comp[2]),
-                              independentFiltering = input$independentFiltering, 
-                              altHypothesis = input$altHypothesis,
-                              lfcThreshold = 0,
-                              alpha = input$alpha,
-                              pAdjustMethod = input$pAdjustMethod)
-          results_list[[comp_name]] <- comp_res
+        peak_ids <- paste0(
+          filtered_masterPeak_info$seqnames, ":",
+          filtered_masterPeak_info$start, "-",
+          filtered_masterPeak_info$end
+        )
+        
+        rownames(filteredDataS) <- peak_ids
+        rownames(normDDS) <- peak_ids
+
+        dds_lrt <- DESeqDataSetFromMatrix(
+          countData = filteredDataS,
+          colData = DataFrame(condition = values$condition),
+          design = ~ condition
+        )
+        
+        dds_lrt <- DESeq(
+          dds_lrt,
+          test = "LRT",
+          reduced = ~ 1
+        )
+        
+        res_lrt <- results(
+          dds_lrt,
+          independentFiltering = input$independentFiltering,
+          alpha = input$alpha,
+          pAdjustMethod = input$pAdjustMethod
+        )
+        
+        lrt_df <- as.data.frame(res_lrt)
+        rownames(lrt_df) <- peak_ids
+        
+        lrt_df$omnibus_pvalue <- lrt_df$pvalue
+        lrt_df$omnibus_padj <- lrt_df$padj
+        
+        values$omnibusResult <- lrt_df
+        
+        pScreen <- lrt_df$omnibus_pvalue
+        names(pScreen) <- peak_ids
+
+        pConfirmation <- matrix(
+          NA_real_,
+          nrow = length(peak_ids),
+          ncol = length(comparison_names),
+          dimnames = list(peak_ids, comparison_names)
+        )
+        
+        for (i in seq_along(comparisons)) {
           
-          countMatDiff <- cbind(filteredDataS, normDDS, comp_res)
-          filtered_masterPeak_df <- as.data.frame(filtered_masterPeak)
-          filtered_masterPeak_info <- filtered_masterPeak_df[, c("seqnames", "start", "end")]
-          merged_countMatDiff <- cbind(filtered_masterPeak_info, countMatDiff)
+          comp <- comparisons[[i]]
+          comp_name <- comparison_names[i]
+          
+          comp_res <- results(
+            DDS,
+            contrast = c("condition", comp[1], comp[2]),
+            independentFiltering = FALSE,
+            altHypothesis = input$altHypothesis,
+            lfcThreshold = 0,
+            alpha = input$alpha,
+            pAdjustMethod = input$pAdjustMethod
+          )
+          
+          comp_df <- as.data.frame(comp_res)
+          rownames(comp_df) <- peak_ids
+          
+          comp_df$omnibus_pvalue <- lrt_df$omnibus_pvalue
+          comp_df$omnibus_padj <- lrt_df$omnibus_padj
+          
+          pConfirmation[, comp_name] <- comp_df$pvalue
+          
+          results_list[[comp_name]] <- comp_df
+        }
+
+        valid_idx <- !is.na(pScreen) & rowSums(is.na(pConfirmation)) == 0
+        
+        stageR_posthoc_full <- matrix(
+          NA_real_,
+          nrow = length(peak_ids),
+          ncol = length(comparison_names),
+          dimnames = list(peak_ids, comparison_names)
+        )
+        
+        if (sum(valid_idx) > 0) {
+          stageRObj <- stageR::stageR(
+            pScreen = pScreen[valid_idx],
+            pConfirmation = pConfirmation[valid_idx, , drop = FALSE],
+            pScreenAdjusted = FALSE
+          )
+          stageRObj <- stageR::stageWiseAdjustment(
+            object = stageRObj,
+            method = "holm",
+            alpha = input$alpha
+          )
+          stageR_adj <- stageR::getAdjustedPValues(
+            stageRObj,
+            onlySignificantGenes = FALSE,
+            order = FALSE
+          )
+          
+          stageR_adj <- as.data.frame(stageR_adj)
+          stageR_confirmation_adj <- stageR_adj[, -1, drop = FALSE]
+          colnames(stageR_confirmation_adj) <- comparison_names
+          stageR_posthoc_full[rownames(stageR_confirmation_adj), comparison_names] <-
+            as.matrix(stageR_confirmation_adj)
+        }
+        
+        for (comp_name in names(results_list)) {
+          
+          comp_df <- results_list[[comp_name]]
+          
+          comp_df$posthoc_padj_across_comparisons <-
+            stageR_posthoc_full[rownames(comp_df), comp_name]
+          
+          countMatDiff <- cbind(
+            filteredDataS,
+            normDDS,
+            comp_df
+          )
+          
+          merged_countMatDiff <- cbind(
+            filtered_masterPeak_info,
+            countMatDiff
+          )
+          
           merged_results_list[[comp_name]] <- merged_countMatDiff
         }
-        values$deseqResultList <- merged_results_list
         
+        values$deseqResultList <- merged_results_list
+
         for (comp_name in names(merged_results_list)) {
           local({
             cn <- comp_name
@@ -1097,6 +1245,10 @@ server <- function(input, output, session) {
             new_colnames[new_colnames == "baseMean"] <- "average expression"
             new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
             new_colnames[new_colnames == "stat"] <- "Wald Statistic"
+            new_colnames[new_colnames == "omnibus_pvalue"] <- "omnibus p-value"
+            new_colnames[new_colnames == "omnibus_padj"] <- "omnibus adjusted p-value"
+            new_colnames[new_colnames == "posthoc_padj_across_comparisons"] <-
+              "post-hoc adjusted p-value across comparisons"
             
             output[[paste0("deseqResult_", cn)]] <- DT::renderDataTable({
               DT::datatable(
@@ -1106,21 +1258,21 @@ server <- function(input, output, session) {
                 extensions = 'FixedHeader',
                 options = list(
                   pageLength = 10,
-                  autoWidth = F,
+                  autoWidth = FALSE,
                   searchHighlight = TRUE,
                   scrollX = TRUE,
                   FixedHeader = TRUE
                 )
               )
             })
-            
-            values$deseqResultList <- lapply(merged_results_list, function(df) {
-              df[!is.na(df$padj) & df$padj != "", ]
-            })
-            
           })
         }
+
+        values$deseqResultList <- lapply(merged_results_list, function(df) {
+          df[!is.na(df$padj) & df$padj != "", ]
+        })
       }
+      
       sendSweetAlert(
         session = session,
         title = "Success",
@@ -1137,11 +1289,9 @@ server <- function(input, output, session) {
     }, finally = {
       updateTabItems(session, "menuitem", "step3")
       removeModal()
-      allowStep32(TRUE)
-      shinyjs::enable("step32")
     })
   })
-  
+
   output$differential_Parameters <- renderUI({
     is_independent_filter <- ifelse(is.null(input$independentFiltering), FALSE, input$independentFiltering)
     
@@ -1159,164 +1309,137 @@ server <- function(input, output, session) {
     
     list(
       column(alt_col,
+             div(
+               style = "display:inline-block; vertical-align:middle;",
+               shiny::tags$strong("Direction of Change:")
+             ),
+             div(
+               style = "display:inline-block; vertical-align:middle; margin-left:5px;",
+               bsButton("DirectionofChangeHelp", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button")
+             ),
              selectInput(
                inputId = "altHypothesis",
-               label = "Direction of Change:",
+               label = NULL,
                choices = list(
                  "Upregulated Peaks" = "greater",
                  "Downregulated Peaks" = "less",
                  "Both Directions" = "greaterAbs"
                ),
                selected = "greaterAbs"
-             )),
+             ),
+             bsPopover(
+               id = "DirectionofChangeHelp", 
+               title = NULL, 
+               content = "Direction of Change defines the alternative hypothesis for DESeq2 testing based on log2 fold change.",
+               placement = "right", 
+               trigger = "hover", 
+               options = list(container = "body")
+             )
+      ),
       column(radio_col,
+             div(
+               style = "display:inline-block; vertical-align:middle;",
+               shiny::tags$strong("Apply Independent Filtering for Low-Count Peaks")
+             ),
+             div(
+               style = "display:inline-block; vertical-align:middle; margin-left:5px;",
+               bsButton("independentFilteringHelp", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button")
+             ),
              radioButtons(
                inputId = "independentFiltering",
-               label = "Apply Independent Filtering for Low-Count Peaks",
+               label = NULL,
                choices = list("Yes" = TRUE, "No" = FALSE),
                selected = is_independent_filter,
                inline = TRUE
-             )),
-      column(alpha_col,
-             if (is_independent_filter) {
-               numericInput("alpha", "Significance Level:", value = 0.01, min = 0, max = 1, step = 0.01)
-             } else {
-               hidden(numericInput("alpha", NULL, value = 0.01, min = 0, max = 1, step = 0.01))
-             }),
+             ),
+             bsPopover(
+               id = "independentFilteringHelp", 
+               title = NULL, 
+               content = "When enabled, ChromTag applies the independent filtering procedure implemented in DESeq2. DESeq2 uses the mean of normalized counts as a filtering statistic that is independent of the test statistic. Low-information peaks may receive NA adjusted p-values and are not considered significant after multiple-testing correction. This procedure is not a direct count-based peak filtering step.",
+               placement = "right", 
+               trigger = "hover", 
+               options = list(container = "body")
+             )
+      ),
+      column(
+        alpha_col,
+        if (is_independent_filter) {
+          tagList(
+            div(
+              style = "display:inline-block; vertical-align:middle;",
+              shiny::tags$strong("Independent filtering target adjusted p-value:")
+            ),
+            div(
+              style = "display:inline-block; vertical-align:middle; margin-left:5px;",
+              bsButton(
+                "alphaHelp",
+                label = "",
+                icon = icon("question"),
+                size = "extra-small",
+                class = "tiny-button"
+              )
+            ),
+            numericInput(
+              "alpha",
+              label = NULL,
+              value = 0.01,
+              min = 0,
+              max = 1,
+              step = 0.01
+            ),
+            bsPopover(
+              id = "alphaHelp",
+              title = "",
+              content = "DESeq2 uses this value to optimize independent filtering before multiple-testing adjustment. Independent filtering is usually based on the mean normalized count of each peak and identifies low-information peaks with very low mean signal, which have little chance of being statistically significant but still increase the multiple-testing burden. DESeq2 tests different mean-signal filtering thresholds and automatically chooses a threshold that maximizes, or nearly maximizes, the number of peaks with significant adjusted p-values. Peaks below the selected independent filtering threshold are not removed from the final result table, but their adjusted p-values may be set to NA because they are excluded from the multiple-testing adjustment. When BH is selected, this target corresponds to the FDR cutoff; when Holm is selected, it corresponds to the Holm-adjusted p-value cutoff. This value is used only for optimizing independent filtering; final differential peaks are selected later based on the specified adjusted p-value and log2FC cutoffs.",
+              placement = "right",
+              trigger = "hover",
+              options = list(container = "body")
+            )
+          )
+        } else {
+          hidden(
+            numericInput(
+              "alpha",
+              label = NULL,
+              value = 0.01,
+              min = 0,
+              max = 1,
+              step = 0.01
+            )
+          )
+        }
+      ),
       column(padj_col,
              selectInput(
                inputId = "pAdjustMethod",
-               label = "P-value:",
+               label = "P-value adjustment method:",
                choices = c("Benjamini–Hochberg (BH)" = "BH", "Holm" = "holm"),
                selected = "BH"
              ))
     )
   })
   
-  #--------------------------
-  observeEvent(input$adjpvalueThreshold, {
-    if (is.null(input$adjpvalueThreshold) ||
-        is.na(as.numeric(input$adjpvalueThreshold)) ||
-        as.numeric(input$adjpvalueThreshold) < 0 ||
-        as.numeric(input$adjpvalueThreshold) > 1) {
-      showFeedbackDanger(
-        inputId = "adjpvalueThreshold",
-        text = "Adjusted P-value threshold must be a number between 0 and 1."
-      )
-    } else {
-      hideFeedback("adjpvalueThreshold")
-      adjpvalueThreshold <- as.numeric(input$adjpvalueThreshold)
-      values$adjpvalueThreshold <- adjpvalueThreshold
-    }
-  })
-  
-  observeEvent(input$log2fcThreshold, {
-    if (is.null(input$log2fcThreshold) ||
-        is.na(as.numeric(input$log2fcThreshold)) ||
-        as.numeric(input$log2fcThreshold) < 0) {
-      showFeedbackDanger(
-        inputId = "log2fcThreshold",
-        text = "Log2 fold change threshold must be a positive number."
-      )
-    } else {
-      hideFeedback("log2fcThreshold")
-      log2fcThreshold <- as.numeric(input$log2fcThreshold)
-      values$log2fcThreshold <- log2fcThreshold
-    }
-  })
-  
   observeEvent(input$step32, {
-    req(values$log2fcThreshold,values$adjpvalueThreshold)
     clean_DRF(T)
-    log2fcThreshold <- values$log2fcThreshold
-    adjpvalueThreshold <- values$adjpvalueThreshold
+    req(values$deseqResultList)
     tryCatch({
-      
-      if (values$groupCount == 2) {
-        req(values$deseqResult)
-        dataToFilter <- values$deseqResult
-      } else if (values$groupCount > 2) {
-        req(values$deseqResultList)
-        selectedComp <- input$selectedComparison
-        if (is.null(selectedComp) || !(selectedComp %in% names(values$deseqResultList))) {
-          showNotification("Please select a valid comparison result for filtering!", type = "error")
-          return()
-        }
-        dataToFilter <- values$deseqResultList[[selectedComp]]
-      }
-      
-      sig_peaks <- dataToFilter[
-        dataToFilter$padj < adjpvalueThreshold &
-          abs(dataToFilter$log2FoldChange) > log2fcThreshold, 
-      ]
-      
-      values$sig_peaks <- sig_peaks
-      
-      new_colnames <- colnames(sig_peaks)
-      new_colnames[new_colnames == "baseMean"] <- "average expression"
-      new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
-      new_colnames[new_colnames == "stat"] <- "Wald Statistic"
-      
-      sendSweetAlert(
-        session = session,
-        title = "Success",
-        text = paste0("Filtering completed successfully! Peaks retained: ", nrow(sig_peaks)),
-        type = "success"
-      )
-      
-      if (values$groupCount == 2) {
-        output$deseqResult2 <- DT::renderDataTable({
-          DT::datatable(
-            as.data.frame(sig_peaks),
-            colnames = new_colnames,
-            selection = 'none',
-            extensions = 'FixedHeader',
-            width = '80%',
-            options = list(
-              pageLength = 10,
-              autoWidth = F,
-              searchHighlight = TRUE,
-              scrollX = TRUE,
-              FixedHeader = TRUE
-            )
-          )
-        })
-        
-        updateTabsetPanel(session, "analysis_results", selected = "After Filtering")
-      } else if (values$groupCount > 2) {
-        output$filteredResult <- DT::renderDataTable({
-          DT::datatable(
-            as.data.frame(sig_peaks),
-            colnames = new_colnames,
-            selection = 'none',
-            extensions = 'FixedHeader',
-            width = '80%',
-            options = list(
-              pageLength = 10,
-              autoWidth = FALSE,
-              searchHighlight = TRUE,
-              scrollX = TRUE,
-              FixedHeader = TRUE
-            )
-          )
-        })
-      }
+      selectedComp <- input$selectedComparison
+      values$deseqResult <- values$deseqResultList[[selectedComp]]
       shinyjs::enable("step4")
-      
+      updateTabItems(session, "menuitem", "step4")
     }, error = function(e) {
       sendSweetAlert(
         session = session,
         title = "Error",
-        text = paste("An error occurred during filtering:", e$message),
+        text = paste("An error occurred:", e$message),
         type = "error"
       )
     })
   })
-  
-  #-----------------------
+
   observe({
-    req(values$sig_peaks)
-    sig_peaks <- values$sig_peaks
+    req(values$deseqResult)
+    sig_peaks <- values$deseqResult
     sig_peaks_gr <- GRanges(
       seqnames = sig_peaks$seqnames, 
       ranges = IRanges(start = sig_peaks$start, end = sig_peaks$end),
@@ -1433,7 +1556,6 @@ server <- function(input, output, session) {
     })
   })
   
-  #-----------------------
   volcano_params <- reactiveValues(
     FCcutoff1 = 1.0,
     FCcutoff2 = 1.0,
@@ -1471,8 +1593,54 @@ server <- function(input, output, session) {
       fc_cutoff1 <- input$FCcutoff1
       fc_cutoff2 <- input$FCcutoff2
       p_cutoff <- 10^(-input$pCutoff)
-      red_peaks_up <- peakAnno_df[peakAnno_df$pvalue <= p_cutoff & peakAnno_df$log2FoldChange >= fc_cutoff2, ]
-      red_peaks_down <- peakAnno_df[peakAnno_df$pvalue <= p_cutoff & peakAnno_df$log2FoldChange <= -fc_cutoff1, ]
+      if (values$groupCount == 2) {
+
+        red_peaks_up <- peakAnno_df[
+          !is.na(peakAnno_df$pvalue) &
+            peakAnno_df$pvalue <= p_cutoff &
+            peakAnno_df$log2FoldChange >= fc_cutoff2,
+        ]
+        
+        red_peaks_down <- peakAnno_df[
+          !is.na(peakAnno_df$pvalue) &
+            peakAnno_df$pvalue <= p_cutoff &
+            peakAnno_df$log2FoldChange <= -fc_cutoff1,
+        ]
+        
+      } else if (values$groupCount > 2) {
+        
+        omnibus_cutoff <- ifelse(
+          is.null(input$omnibusPadjCutoff),
+          0.05,
+          input$omnibusPadjCutoff
+        )
+        
+        posthoc_cutoff <- ifelse(
+          is.null(input$posthocPadjCutoff),
+          0.05,
+          input$posthocPadjCutoff
+        )
+        
+        red_peaks_up <- peakAnno_df[
+          !is.na(peakAnno_df$pvalue) &
+            !is.na(peakAnno_df$omnibus_padj) &
+            !is.na(peakAnno_df$posthoc_padj_across_comparisons) &
+            peakAnno_df$pvalue <= p_cutoff &
+            peakAnno_df$omnibus_padj <= omnibus_cutoff &
+            peakAnno_df$posthoc_padj_across_comparisons <= posthoc_cutoff &
+            peakAnno_df$log2FoldChange >= fc_cutoff2,
+        ]
+        
+        red_peaks_down <- peakAnno_df[
+          !is.na(peakAnno_df$pvalue) &
+            !is.na(peakAnno_df$omnibus_padj) &
+            !is.na(peakAnno_df$posthoc_padj_across_comparisons) &
+            peakAnno_df$pvalue <= p_cutoff &
+            peakAnno_df$omnibus_padj <= omnibus_cutoff &
+            peakAnno_df$posthoc_padj_across_comparisons <= posthoc_cutoff &
+            peakAnno_df$log2FoldChange <= -fc_cutoff1,
+        ]
+      }
       
       red_peaks_upgenes <- unique(red_peaks_up$SYMBOL)
       red_peaks_downgenes <- unique(red_peaks_down$SYMBOL)
@@ -1692,68 +1860,223 @@ server <- function(input, output, session) {
   })
   
   # Tab 1: Volcanoplot
+  output$isMultiGroup <- reactive({
+    !is.null(values$groupCount) && values$groupCount > 2
+  })
+  outputOptions(output, "isMultiGroup", suspendWhenHidden = FALSE)
+  
   output$volcanoplot <- renderPlot({
     req(values$peakAnno_df, volcano_params$initialized)
     req(values$DVReady)
     
     if (values$groupCount == 2) {
+      
       group_names <- names(values$groups)
       if (length(group_names) >= 2) {
         plotTitle <- paste(group_names[1], "vs", group_names[2])
       } else {
         plotTitle <- "Volcano Plot"
       }
+      
+      # Two-group comparison: keep the original volcano plot behavior
+      enhancedVolcano(
+        values$peakAnno_df,
+        lab = values$peakAnno_df$SYMBOL,
+        x = "log2FoldChange",
+        y = "pvalue",
+        title = plotTitle,
+        pCutoff = volcano_params$pCutoff,
+        FCcutoff1 = volcano_params$FCcutoff1,
+        FCcutoff2 = volcano_params$FCcutoff2,
+        pointSize = volcano_params$pointSize,
+        labSize = volcano_params$labSize
+      )
+      
     } else if (values$groupCount > 2) {
+      
       if (!is.null(input$selectedComparison)) {
         plotTitle <- gsub("_vs_", " vs ", input$selectedComparison)
       } else {
         plotTitle <- "Volcano Plot"
       }
+      
+      peakAnno_df <- values$peakAnno_df
+      
+      omnibus_cutoff <- ifelse(
+        is.null(input$omnibusPadjCutoff),
+        0.05,
+        input$omnibusPadjCutoff
+      )
+      
+      posthoc_cutoff <- ifelse(
+        is.null(input$posthocPadjCutoff),
+        0.05,
+        input$posthocPadjCutoff
+      )
+      
+      validate(
+        need(
+          "omnibus_padj" %in% colnames(peakAnno_df),
+          "Multi-group volcano plot requires the column 'omnibus_padj'. Please run the multi-group differential analysis first."
+        ),
+        need(
+          "posthoc_padj_across_comparisons" %in% colnames(peakAnno_df),
+          "Multi-group volcano plot requires the column 'posthoc_padj_across_comparisons'. Please run the post-hoc correction step first."
+        ),
+        need(
+          "pvalue" %in% colnames(peakAnno_df),
+          "The column 'pvalue' is missing."
+        ),
+        need(
+          "log2FoldChange" %in% colnames(peakAnno_df),
+          "The column 'log2FoldChange' is missing."
+        )
+      )
+
+      enhancedVolcano2(
+        peakAnno_df,
+        lab = peakAnno_df$SYMBOL,
+        x = "log2FoldChange",
+        y = "pvalue",
+        pCutoffCol = "pvalue",
+        title = plotTitle,
+        subtitle = "Stage-wise multi-group post-hoc contrast",
+        pCutoff = volcano_params$pCutoff,
+        FCcutoff1 = volcano_params$FCcutoff1,
+        FCcutoff2 = volcano_params$FCcutoff2,
+        omnibus_padj = "omnibus_padj",
+        posthoc_padj_across_comparisons = "posthoc_padj_across_comparisons",
+        omnibusCutoff = omnibus_cutoff,
+        posthocCutoff = posthoc_cutoff,
+        pointSize = volcano_params$pointSize,
+        labSize = volcano_params$labSize
+      )
     }
-    enhancedVolcano(
-      values$peakAnno_df,
-      lab = values$peakAnno_df$SYMBOL,
-      x = 'log2FoldChange',
-      y = 'pvalue',
-      title = plotTitle,
-      pCutoff = volcano_params$pCutoff,
-      FCcutoff1 = volcano_params$FCcutoff1,
-      FCcutoff2 = volcano_params$FCcutoff2,
-      pointSize = volcano_params$pointSize,
-      labSize = volcano_params$labSize
-    )
   })
-  
   
   # Tab 2: MA
   output$maplot <- renderPlot({
     req(values$peakAnno_df)
     req(values$DVReady)
+    
     peakAnno_df2 <- values$peakAnno_df
-    peakAnno_df2$change <- ifelse(values$peakAnno_df$log2FoldChange > 0 & values$peakAnno_df$padj < 0.05, "UP",
-                                  ifelse(values$peakAnno_df$log2FoldChange < 0 & values$peakAnno_df$padj < 0.05, "DOWN", NA))
+    
+    if (values$groupCount == 2) {
+      
+      # Two-group comparison: keep the original MA plot behavior
+      peakAnno_df2$change <- ifelse(
+        peakAnno_df2$log2FoldChange > volcano_params$FCcutoff2 &
+          peakAnno_df2$pvalue < volcano_params$pCutoff,
+        "UP",
+        ifelse(
+          peakAnno_df2$log2FoldChange < -volcano_params$FCcutoff1 &
+            peakAnno_df2$pvalue < volcano_params$pCutoff,
+          "DOWN",
+          "NA"
+        )
+      )
+      
+    } else if (values$groupCount > 2) {
+      
+      omnibus_cutoff <- ifelse(
+        is.null(input$omnibusPadjCutoff),
+        0.05,
+        input$omnibusPadjCutoff
+      )
+      
+      posthoc_cutoff <- ifelse(
+        is.null(input$posthocPadjCutoff),
+        0.05,
+        input$posthocPadjCutoff
+      )
+      
+      validate(
+        need(
+          "omnibus_padj" %in% colnames(peakAnno_df2),
+          "Multi-group MA plot requires the column 'omnibus_padj'. Please run the multi-group differential analysis first."
+        ),
+        need(
+          "posthoc_padj_across_comparisons" %in% colnames(peakAnno_df2),
+          "Multi-group MA plot requires the column 'posthoc_padj_across_comparisons'. Please run the post-hoc correction step first."
+        ),
+        need(
+          "pvalue" %in% colnames(peakAnno_df2),
+          "The column 'pvalue' is missing."
+        ),
+        need(
+          "log2FoldChange" %in% colnames(peakAnno_df2),
+          "The column 'log2FoldChange' is missing."
+        )
+      )
+
+      peakAnno_df2$change <- ifelse(
+        !is.na(peakAnno_df2$pvalue) &
+          !is.na(peakAnno_df2$omnibus_padj) &
+          !is.na(peakAnno_df2$posthoc_padj_across_comparisons) &
+          peakAnno_df2$pvalue <= volcano_params$pCutoff &
+          peakAnno_df2$omnibus_padj <= omnibus_cutoff &
+          peakAnno_df2$posthoc_padj_across_comparisons <= posthoc_cutoff &
+          peakAnno_df2$log2FoldChange >= volcano_params$FCcutoff2,
+        "UP",
+        ifelse(
+          !is.na(peakAnno_df2$pvalue) &
+            !is.na(peakAnno_df2$omnibus_padj) &
+            !is.na(peakAnno_df2$posthoc_padj_across_comparisons) &
+            peakAnno_df2$pvalue <= volcano_params$pCutoff &
+            peakAnno_df2$omnibus_padj <= omnibus_cutoff &
+            peakAnno_df2$posthoc_padj_across_comparisons <= posthoc_cutoff &
+            peakAnno_df2$log2FoldChange <= -volcano_params$FCcutoff1,
+          "DOWN",
+          "NA"
+        )
+      )
+    }
     
     top_upregulated_genes <- peakAnno_df2 %>%
-      arrange(desc(log2FoldChange)) %>%
-      head(input$topUpGenes)
+      dplyr::filter(change == "UP") %>%
+      dplyr::arrange(desc(log2FoldChange)) %>%
+      dplyr::slice_head(n = input$topUpGenes)
+    
     top_downregulated_genes <- peakAnno_df2 %>%
-      arrange(log2FoldChange) %>%
-      head(input$topDownGenes)
-    top_genes <- rbind(top_upregulated_genes, top_downregulated_genes)
+      dplyr::filter(change == "DOWN") %>%
+      dplyr::arrange(log2FoldChange) %>%
+      dplyr::slice_head(n = input$topDownGenes)
+    
+    top_genes <- dplyr::bind_rows(
+      top_upregulated_genes,
+      top_downregulated_genes
+    )
     
     print(
       ggplot(peakAnno_df2, aes(x = baseMean, y = log2FoldChange)) +
-        geom_point(aes(color = change), alpha = 0.5) +
-        scale_color_manual(values = c("DOWN" = "lightblue", "UP" = "lightcoral")) +
+        geom_point(
+          data = subset(peakAnno_df2, change == "NA"),
+          aes(color = change),
+          alpha = 0.5
+        ) +
+        geom_point(
+          data = subset(peakAnno_df2, change %in% c("UP", "DOWN")),
+          aes(color = change),
+          alpha = 0.5
+        ) +
+        scale_color_manual(
+          values = c("DOWN" = "lightblue", "UP" = "lightcoral")
+        ) +
         scale_x_log10() +
-        labs(title = "MA Plot", x = "Base Mean", y = "Log2 Fold Change") +
+        labs(
+          title = "MA Plot",
+          x = "Base Mean",
+          y = "Log2 Fold Change"
+        ) +
         theme_minimal() +
-        geom_text_repel(data = top_genes, aes(label = SYMBOL),
-                        size = input$size,
-                        color = "black",
-                        box.padding = input$boxPadding,
-                        max.overlaps = input$maxOverlaps)
-      
+        geom_text_repel(
+          data = top_genes,
+          aes(label = SYMBOL),
+          size = input$size,
+          color = "black",
+          box.padding = input$boxPadding,
+          max.overlaps = input$maxOverlaps
+        )
     )
   })
   
@@ -1774,33 +2097,148 @@ server <- function(input, output, session) {
   
   # Tab 4: Heatmap
   output$heatmapPlot <- renderPlot({
-    req(values$peakAnno_df,values$filteredDataS)
-    req(values$DVReady)
-    sample_cols <- colnames(values$filteredDataS)#[4:ncol(values$peakAnno_df)]
-    summarized_data <- values$peakAnno_df %>%
-      dplyr::select(annotation, all_of(sample_cols)) %>%
-      mutate(annotation = case_when(
-        grepl("^Promoter", annotation) ~ "Promoter",
-        grepl("^Intron", annotation) ~ "Intron",
-        grepl("^Exon", annotation) ~ "Exon",
-        TRUE ~ annotation
-      ))
-    summarized_data <- summarized_data %>%
-      group_by(annotation) %>%
-      summarise(across(all_of(sample_cols), sum))
-    summarized_data_df <- as.data.frame(summarized_data)
-    rownames(summarized_data_df) <- summarized_data_df$annotation
-    data_for_heatmap <- summarized_data_df %>% dplyr::select(-annotation)
-    print(pheatmap(data_for_heatmap,
-                   scale = "row", 
-                   clustering_distance_rows = "euclidean",
-                   clustering_distance_cols = "euclidean",
-                   clustering_method = "complete",
-                   main = "Peak Count in Regions"))
+    req(values$peakAnno_df, values$filteredDataS, values$DVReady)
+    
+    peakAnno_df <- values$peakAnno_df
+
+    peakAnno_df$peak_id <- paste0(
+      peakAnno_df$seqnames,
+      ":",
+      peakAnno_df$start,
+      "-",
+      peakAnno_df$end
+    )
+
+    sample_cols <- colnames(values$filteredDataS)
+    norm_cols <- paste0(sample_cols, "_norm")
+    
+    if (all(norm_cols %in% colnames(peakAnno_df))) {
+      heatmap_cols <- norm_cols
+    } else {
+      heatmap_cols <- sample_cols
+    }
+
+    if (values$groupCount == 2) {
+      
+      sig_col <- if ("padj" %in% colnames(peakAnno_df)) "padj" else "pvalue"
+      
+      heatmap_df <- peakAnno_df %>%
+        dplyr::filter(
+          !is.na(.data[[sig_col]]),
+          .data[[sig_col]] <= volcano_params$pCutoff,
+          (
+            log2FoldChange >= volcano_params$FCcutoff2 |
+              log2FoldChange <= -volcano_params$FCcutoff1
+          )
+        )
+      
+      heatmap_df <- heatmap_df %>%
+        dplyr::arrange(.data[[sig_col]], dplyr::desc(abs(log2FoldChange))) %>%
+        dplyr::slice_head(n = min(100, nrow(.)))
+      
+    } else if (values$groupCount > 2) {
+      
+      omnibus_cutoff <- ifelse(
+        is.null(input$omnibusPadjCutoff),
+        0.05,
+        input$omnibusPadjCutoff
+      )
+      
+      posthoc_cutoff <- ifelse(
+        is.null(input$posthocPadjCutoff),
+        0.05,
+        input$posthocPadjCutoff
+      )
+      
+      validate(
+        need(
+          "omnibus_padj" %in% colnames(peakAnno_df),
+          "Multi-group heatmap requires the column 'omnibus_padj'. Please run the multi-group differential analysis first."
+        ),
+        need(
+          "posthoc_padj_across_comparisons" %in% colnames(peakAnno_df),
+          "Multi-group heatmap requires the column 'posthoc_padj_across_comparisons'. Please run the post-hoc correction step first."
+        ),
+        need(
+          "pvalue" %in% colnames(peakAnno_df),
+          "The column 'pvalue' is missing."
+        ),
+        need(
+          "log2FoldChange" %in% colnames(peakAnno_df),
+          "The column 'log2FoldChange' is missing."
+        )
+      )
+      
+      heatmap_df <- peakAnno_df %>%
+        dplyr::filter(
+          !is.na(pvalue),
+          !is.na(omnibus_padj),
+          !is.na(posthoc_padj_across_comparisons),
+          pvalue <= volcano_params$pCutoff,
+          omnibus_padj <= omnibus_cutoff,
+          posthoc_padj_across_comparisons <= posthoc_cutoff,
+          (
+            log2FoldChange >= volcano_params$FCcutoff2 |
+              log2FoldChange <= -volcano_params$FCcutoff1
+          )
+        )
+      
+      heatmap_df <- heatmap_df %>%
+        dplyr::arrange(
+          omnibus_padj,
+          posthoc_padj_across_comparisons,
+          pvalue,
+          dplyr::desc(abs(log2FoldChange))
+        ) %>%
+        dplyr::slice_head(n = min(100, nrow(.)))
+    }
+
+    if (nrow(heatmap_df) == 0) {
+      plot.new()
+      text(
+        x = 0.5,
+        y = 0.5,
+        labels = "No differential peaks passed the selected cutoffs",
+        cex = 1.2
+      )
+      return()
+    }
+
+    data_for_heatmap <- as.matrix(heatmap_df[, heatmap_cols, drop = FALSE])
+    mode(data_for_heatmap) <- "numeric"
+    
+    rownames(data_for_heatmap) <- make.unique(heatmap_df$peak_id)
+    colnames(data_for_heatmap) <- gsub("_norm$", "", colnames(data_for_heatmap))
+
+    feature_annotation <- dplyr::case_when(
+      grepl("^Promoter", heatmap_df$annotation) ~ "Promoter",
+      grepl("^Intron", heatmap_df$annotation) ~ "Intron",
+      grepl("^Exon", heatmap_df$annotation) ~ "Exon",
+      grepl("Intergenic", heatmap_df$annotation) ~ "Intergenic",
+      grepl("UTR", heatmap_df$annotation) ~ "UTR",
+      grepl("Downstream", heatmap_df$annotation) ~ "Downstream",
+      TRUE ~ as.character(heatmap_df$annotation)
+    )
+    
+    annotation_row <- data.frame(
+      Feature = feature_annotation
+    )
+    
+    rownames(annotation_row) <- rownames(data_for_heatmap)
+
+    pheatmap(
+      data_for_heatmap,
+      scale = "row",
+      clustering_distance_rows = "euclidean",
+      clustering_distance_cols = "euclidean",
+      clustering_method = "complete",
+      annotation_row = annotation_row,
+      show_rownames = FALSE,
+      main = "Normalized read counts of selected differential peaks"
+    )
   })
   
-  
-  #------------------------------------
+  #-------------------enrich-------------------
   observeEvent(input$step6, {
     output$dynamic_tabs <- renderUI({NULL})
     clean_enrichment(T)
@@ -2056,7 +2494,7 @@ server <- function(input, output, session) {
       })
     }
     
-    #GSEA analysis type
+    ##########GSEA analysis type#############
     else if (input$analysis_type == "GSEA") {
       updateTabsetPanel(session, "visualization_tabs")
       output$dynamic_tabs <- renderUI({
@@ -2126,7 +2564,7 @@ server <- function(input, output, session) {
     }
     
   })
-  #---------------
+  #######################################################
   output$GSEA_geneset_ui <- renderUI({
     if (input$analysis_type == "GSEA") {
       if (input$Selectdata == "Example dataset" || input$species == "Human") {
@@ -2181,6 +2619,7 @@ server <- function(input, output, session) {
     }
   })
   
+  ####run GSEA####
   observeEvent(input$step6, {
     showModal(modalDialog(
       title = "Run Enrichment analysis",
@@ -2199,6 +2638,43 @@ server <- function(input, output, session) {
       upgenes_list_enrichment <- input$upgenes_list2
       downgenes_list_enrichment <- input$downgenes_list2
       GSEA_genelist_enrichment <- input$GSEA_genelist
+
+      peakAnno_bg_df <- as.data.frame(values$peakAnno_df, stringsAsFactors = FALSE)
+      background_symbol <- unique(trimws(as.character(peakAnno_bg_df$SYMBOL)))
+      background_symbol <- background_symbol[!is.na(background_symbol) & background_symbol != ""]
+      background_entrez_df <- bitr(
+        background_symbol,
+        fromType = "SYMBOL",
+        toType   = "ENTREZID",
+        OrgDb    = values$annoDb
+      )
+      background_entrez_df <- dplyr::distinct(
+        background_entrez_df,
+        ENTREZID,
+        .keep_all = FALSE
+      )
+      background_entrez <- as.character(background_entrez_df$ENTREZID)
+
+      background_dm_kegg <- NULL
+      if (!is.null(input$species) && input$species == "Drosophila") {
+        background_dm_kegg_df <- bitr(
+          background_symbol,
+          fromType = "SYMBOL",
+          toType   = "FLYBASECG",
+          OrgDb    = values$annoDb
+        )
+        background_dm_kegg_df <- dplyr::distinct(
+          background_dm_kegg_df,
+          FLYBASECG,
+          .keep_all = FALSE
+        )
+        background_dm_kegg_df$FLYBASECG <- paste0(
+          "Dmel_",
+          background_dm_kegg_df$FLYBASECG
+        )
+        background_dm_kegg <- as.character(background_dm_kegg_df$FLYBASECG)
+      }
+
       if (length(upgenes_list_enrichment) == 0 || upgenes_list_enrichment == "No upregulated genes") {
         upgenes_list_enrichment <- NULL
       } else {
@@ -2289,6 +2765,7 @@ server <- function(input, output, session) {
       }
       
       if(input$analysis_type == "GO") {
+        ##########GO##########
         ontology <- switch(input$go_ontology,
                            "BP" = "BP",
                            "MF" = "MF",
@@ -2316,6 +2793,7 @@ server <- function(input, output, session) {
           
           go_results_up <- enrichGO(
             gene = upgenes_list_enrichment,
+            universe = background_entrez,
             OrgDb = values$annoDb,
             ont = ontology,
             pAdjustMethod = "BH",
@@ -2390,6 +2868,7 @@ server <- function(input, output, session) {
           
           go_results_down <- enrichGO(
             gene = downgenes_list_enrichment,
+            universe = background_entrez,
             OrgDb = values$annoDb,
             ont = ontology,
             pAdjustMethod = "BH",
@@ -2444,6 +2923,7 @@ server <- function(input, output, session) {
         }
         
       } else if(input$analysis_type == "KEGG") {
+        ##########KEGG##########
         # ---------up------------------
         if(input$species == "Human" || input$species == "Mouse" || input$Selectdata == "Example dataset"){
           if (is.null(upgenes_list_enrichment) || length(upgenes_list_enrichment) == 0) {
@@ -2465,6 +2945,7 @@ server <- function(input, output, session) {
             
             kegg_results_up <- enrichKEGG(
               gene = upgenes_list_enrichment,
+              universe = background_entrez,
               organism = values$Organism, 
               pAdjustMethod = "BH", 
               pvalueCutoff = input$pvalue_cutoff,
@@ -2529,6 +3010,7 @@ server <- function(input, output, session) {
             
             kegg_results_down <- enrichKEGG(
               gene = downgenes_list_enrichment,
+              universe = background_entrez,
               organism = values$Organism, 
               pAdjustMethod = "BH", 
               pvalueCutoff = input$pvalue_cutoff,
@@ -2595,6 +3077,7 @@ server <- function(input, output, session) {
             
             kegg_results_up <- enrichKEGG(
               gene = upgenes_list_enrichment,
+              universe = background_dm_kegg,
               organism = values$Organism, 
               pAdjustMethod = "BH", 
               pvalueCutoff = input$pvalue_cutoff,
@@ -2659,6 +3142,7 @@ server <- function(input, output, session) {
             
             kegg_results_down <- enrichKEGG(
               gene = downgenes_list_enrichment,
+              universe = background_dm_kegg,
               organism = values$Organism, 
               pAdjustMethod = "BH", 
               pvalueCutoff = input$pvalue_cutoff,
@@ -2725,7 +3209,7 @@ server <- function(input, output, session) {
                                    "C8" = read.gmt("extdata/c8.all.v2024.1.Hs.symbols.gmt"),
                                    "ALL" = read.gmt("extdata/msigdb.v2024.1.Hs.symbols.gmt")
             )
-          } else if(input$species == "Mouse"){
+          }else if(input$species == "Mouse"){
             GSEA_geneset <- switch(input$GSEA_geneset,
                                    "MH" = read.gmt("extdata/mh.all.v2024.1.Mm.symbols.gmt"), 
                                    "M1" = read.gmt("extdata/m1.all.v2024.1.Mm.symbols.gmt"),
@@ -2951,7 +3435,6 @@ server <- function(input, output, session) {
               gsea_result <- gseKEGG(geneList_vector, 
                                      organism = values$Organism, 
                                      pvalueCutoff = input$GSEA_pvalue_cutoff)
-              # gsea_result<- setReadable(gsea_result, OrgDb = values$annoDb ,keyType = 'FLYBASECG')
               values$gsea_result <- gsea_result
               output$enrichment_result_table_gsea <- DT::renderDataTable({
                 DT::datatable(as.data.frame(gsea_result),
@@ -3382,8 +3865,7 @@ server <- function(input, output, session) {
       removeModal()
     })
   })
-  
-  #-------------------------
+
   observeEvent(input$upstream, {
     if (is.null(input$upstream) || is.na(input$upstream) || input$upstream <= 0) {
       showFeedbackDanger(
@@ -3638,7 +4120,7 @@ server <- function(input, output, session) {
     }
   })
   
-  #-----------------------
+  #------------download-----------
   # coverage_plot
   output$download_coverageplot <- downloadHandler(
     filename = function() {
@@ -3651,7 +4133,7 @@ server <- function(input, output, session) {
 
       n <- length(plots)
       width <- 16
-      height <- if(n > 1) 8 * n else 8
+      height <- if(n > 1) 8 * n else 8 
 
       switch(ext,
              "pdf" = pdf(file, width = width, height = height),
@@ -3713,14 +4195,13 @@ server <- function(input, output, session) {
       write.csv(as.data.frame(values$filtered_masterPeak), file, row.names = FALSE)
     }
   )
-  
-  # For two-group analysis: Download handlers for "Before Filtering" and "After Filtering"
+
   observe({
     req(values$groupCount)
     if (values$groupCount == 2) {
       output$downloadDeseqResult1 <- downloadHandler(
         filename = function() {
-          paste0("deseqResult_before_filter_", Sys.Date(), ".csv")
+          paste0("deseqResult_", Sys.Date(), ".csv")
         },
         content = function(file) {
           req(values$deseqResult)
@@ -3733,26 +4214,9 @@ server <- function(input, output, session) {
           write.csv(dataToWrite, file, row.names = FALSE)
         }
       )
-      
-      output$downloadDeseqResult2 <- downloadHandler(
-        filename = function() {
-          paste0("deseqResult_after_filter_", Sys.Date(), ".csv")
-        },
-        content = function(file) {
-          req(values$sig_peaks)
-          dataToWrite <- values$sig_peaks
-          new_colnames <- colnames(dataToWrite)
-          new_colnames[new_colnames == "baseMean"] <- "average expression"
-          new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
-          new_colnames[new_colnames == "stat"] <- "Wald Statistic"
-          colnames(dataToWrite) <- new_colnames
-          write.csv(dataToWrite, file, row.names = FALSE)
-        }
-      )
     }
   })
-  
-  # For multi-group analysis: Download handlers for each comparison result and the filtered result
+
   observe({
     req(values$groupCount)
     if (values$groupCount > 2) {
@@ -3776,22 +4240,6 @@ server <- function(input, output, session) {
           )
         })
       }
-
-      output$downloadFilteredResult <- downloadHandler(
-        filename = function() {
-          paste0("deseqResult_after_filter_", input$selectedComparison, "_", Sys.Date(), ".csv")
-        },
-        content = function(file) {
-          req(values$sig_peaks)
-          dataToWrite <- values$sig_peaks
-          new_colnames <- colnames(dataToWrite)
-          new_colnames[new_colnames == "baseMean"] <- "average expression"
-          new_colnames[new_colnames == "lfcSE"] <- "log2 FC Std. Error"
-          new_colnames[new_colnames == "stat"] <- "Wald Statistic"
-          colnames(dataToWrite) <- new_colnames
-          write.csv(dataToWrite, file, row.names = FALSE)
-        }
-      )
     }
   })
   
@@ -3878,49 +4326,92 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
+
   output$Download_Volcano <- downloadHandler(
     filename = function() {
       paste("Volcano_Plot_", Sys.Date(), ".", input$extPlot51, sep = "")
     },
     content = function(file) {
+      req(values$peakAnno_df, volcano_params$initialized)
+      req(values$DVReady)
+      
+      if (input$extPlot51 == "pdf") {
+        pdf(file, width = 12, height = 8)
+      } else if (input$extPlot51 == "png") {
+        png(file, width = 12, height = 8, units = "in", res = 1000)
+      } else {
+        jpeg(file, width = 12, height = 8, units = "in", res = 1000)
+      }
+      
+      on.exit(dev.off(), add = TRUE)
+      
       if (values$groupCount == 2) {
+        
         group_names <- names(values$groups)
         if (length(group_names) >= 2) {
           plotTitle <- paste(group_names[1], "vs", group_names[2])
         } else {
           plotTitle <- "Volcano Plot"
         }
+        
+        print(
+          enhancedVolcano(
+            values$peakAnno_df,
+            lab = values$peakAnno_df$SYMBOL,
+            x = "log2FoldChange",
+            y = "pvalue",
+            title = plotTitle,
+            pCutoff = volcano_params$pCutoff,
+            FCcutoff1 = volcano_params$FCcutoff1,
+            FCcutoff2 = volcano_params$FCcutoff2,
+            pointSize = volcano_params$pointSize,
+            labSize = volcano_params$labSize
+          )
+        )
+        
       } else if (values$groupCount > 2) {
+        
         if (!is.null(input$selectedComparison)) {
           plotTitle <- gsub("_vs_", " vs ", input$selectedComparison)
         } else {
           plotTitle <- "Volcano Plot"
         }
-      }
-      
-      if (input$extPlot51 == "pdf") {
-        pdf(file, width = 8, height = 6)
-      } else if (input$extPlot51 == "png") {
-        png(file, width = 8, height = 6, units = "in", res = 1000)
-      } else {
-        jpeg(file, width = 8, height = 6, units = "in", res = 1000)
-      }
-      print(
-        enhancedVolcano(
-          values$peakAnno_df,
-          lab = values$peakAnno_df$SYMBOL,
-          x = 'log2FoldChange',
-          y = 'pvalue',
-          title = plotTitle,
-          pCutoff = volcano_params$pCutoff,
-          FCcutoff1 = volcano_params$FCcutoff1,
-          FCcutoff2 = volcano_params$FCcutoff2,
-          pointSize = volcano_params$pointSize,
-          labSize = volcano_params$labSize
+        
+        peakAnno_df <- values$peakAnno_df
+        
+        omnibus_cutoff <- ifelse(
+          is.null(input$omnibusPadjCutoff),
+          0.05,
+          input$omnibusPadjCutoff
         )
-      )
-      dev.off() 
+        
+        posthoc_cutoff <- ifelse(
+          is.null(input$posthocPadjCutoff),
+          0.05,
+          input$posthocPadjCutoff
+        )
+        
+        print(
+          enhancedVolcano2(
+            peakAnno_df,
+            lab = peakAnno_df$SYMBOL,
+            x = "log2FoldChange",
+            y = "pvalue",
+            pCutoffCol = "pvalue",
+            title = plotTitle,
+            subtitle = "Stage-wise multi-group post-hoc contrast",
+            pCutoff = volcano_params$pCutoff,
+            FCcutoff1 = volcano_params$FCcutoff1,
+            FCcutoff2 = volcano_params$FCcutoff2,
+            omnibus_padj = "omnibus_padj",
+            posthoc_padj_across_comparisons = "posthoc_padj_across_comparisons",
+            omnibusCutoff = omnibus_cutoff,
+            posthocCutoff = posthoc_cutoff,
+            pointSize = volcano_params$pointSize,
+            labSize = volcano_params$labSize
+          )
+        )
+      }
     }
   )
 
@@ -3929,6 +4420,9 @@ server <- function(input, output, session) {
       paste("MA_Plot_", Sys.Date(), ".", input$extPlot52, sep = "")
     },
     content = function(file) {
+      req(values$peakAnno_df)
+      req(values$DVReady)
+      
       if (input$extPlot52 == "pdf") {
         pdf(file, width = 8, height = 6)
       } else if (input$extPlot52 == "png") {
@@ -3936,33 +4430,112 @@ server <- function(input, output, session) {
       } else {
         jpeg(file, width = 8, height = 6, units = "in", res = 1000)
       }
+      
+      on.exit(dev.off(), add = TRUE)
+      
       peakAnno_df2 <- values$peakAnno_df
-      peakAnno_df2$change <- ifelse(peakAnno_df2$log2FoldChange > 0 & peakAnno_df2$padj < 0.05, "UP",
-                                    ifelse(peakAnno_df2$log2FoldChange < 0 & peakAnno_df2$padj < 0.05, "DOWN", NA))
+      
+      if (values$groupCount == 2) {
+
+        peakAnno_df2$change <- ifelse(
+          peakAnno_df2$log2FoldChange > volcano_params$FCcutoff2 &
+            peakAnno_df2$pvalue < volcano_params$pCutoff,
+          "UP",
+          ifelse(
+            peakAnno_df2$log2FoldChange < -volcano_params$FCcutoff1 &
+              peakAnno_df2$pvalue < volcano_params$pCutoff,
+            "DOWN",
+            "NA"
+          )
+        )
+        
+      } else if (values$groupCount > 2) {
+        
+        omnibus_cutoff <- ifelse(
+          is.null(input$omnibusPadjCutoff),
+          0.05,
+          input$omnibusPadjCutoff
+        )
+        
+        posthoc_cutoff <- ifelse(
+          is.null(input$posthocPadjCutoff),
+          0.05,
+          input$posthocPadjCutoff
+        )
+        
+        peakAnno_df2$change <- ifelse(
+          !is.na(peakAnno_df2$pvalue) &
+            !is.na(peakAnno_df2$omnibus_padj) &
+            !is.na(peakAnno_df2$posthoc_padj_across_comparisons) &
+            peakAnno_df2$pvalue <= volcano_params$pCutoff &
+            peakAnno_df2$omnibus_padj <= omnibus_cutoff &
+            peakAnno_df2$posthoc_padj_across_comparisons <= posthoc_cutoff &
+            peakAnno_df2$log2FoldChange >= volcano_params$FCcutoff2,
+          "UP",
+          ifelse(
+            !is.na(peakAnno_df2$pvalue) &
+              !is.na(peakAnno_df2$omnibus_padj) &
+              !is.na(peakAnno_df2$posthoc_padj_across_comparisons) &
+              peakAnno_df2$pvalue <= volcano_params$pCutoff &
+              peakAnno_df2$omnibus_padj <= omnibus_cutoff &
+              peakAnno_df2$posthoc_padj_across_comparisons <= posthoc_cutoff &
+              peakAnno_df2$log2FoldChange <= -volcano_params$FCcutoff1,
+            "DOWN",
+            "NA"
+          )
+        )
+      }
+      
       top_upregulated_genes <- peakAnno_df2 %>%
-        arrange(desc(log2FoldChange)) %>%
-        head(input$topUpGenes)
+        dplyr::filter(change == "UP") %>%
+        dplyr::arrange(dplyr::desc(log2FoldChange)) %>%
+        dplyr::slice_head(n = input$topUpGenes)
+      
       top_downregulated_genes <- peakAnno_df2 %>%
-        arrange(log2FoldChange) %>%
-        head(input$topDownGenes)
-      top_genes <- rbind(top_upregulated_genes, top_downregulated_genes)
+        dplyr::filter(change == "DOWN") %>%
+        dplyr::arrange(log2FoldChange) %>%
+        dplyr::slice_head(n = input$topDownGenes)
+      
+      top_genes <- dplyr::bind_rows(
+        top_upregulated_genes,
+        top_downregulated_genes
+      )
+      
       print(
         ggplot(peakAnno_df2, aes(x = baseMean, y = log2FoldChange)) +
-          geom_point(aes(color = change), alpha = 0.5) +
-          scale_color_manual(values = c("DOWN" = "lightblue", "UP" = "lightcoral")) +
+          geom_point(
+            data = subset(peakAnno_df2, change == "NA"),
+            aes(color = change),
+            alpha = 0.5
+          ) +
+          geom_point(
+            data = subset(peakAnno_df2, change %in% c("UP", "DOWN")),
+            aes(color = change),
+            alpha = 0.5
+          ) +
+          scale_color_manual(
+            values = c("DOWN" = "lightblue", "UP" = "lightcoral")
+          ) +
           scale_x_log10() +
-          labs(title = "MA Plot", x = "Base Mean", y = "Log2 Fold Change") +
+          labs(
+            title = "MA Plot",
+            x = "Base Mean",
+            y = "Log2 Fold Change"
+          ) +
           theme_minimal() +
-          geom_text_repel(data = top_genes, aes(label = SYMBOL), 
-                          size = input$size,  
-                          color = "black", 
-                          box.padding = input$boxPadding,  
-                          max.overlaps = input$maxOverlaps)
+          geom_text_repel(
+            data = top_genes,
+            aes(label = SYMBOL),
+            size = input$size,
+            color = "black",
+            box.padding = input$boxPadding,
+            max.overlaps = input$maxOverlaps
+          )
       )
-      dev.off()
     }
   )
   
+  #PCA
   output$Download_PCA <- downloadHandler(
     filename = function() {
       paste("PCA_Plot_", Sys.Date(), ".", input$extPlot53, sep = "")
@@ -3990,45 +4563,146 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-
+  
+  #Heatmap
   output$Download_Heatmap <- downloadHandler(
     filename = function() {
-      paste("Heatmap_Plot_", Sys.Date(), ".", input$extPlot54, sep = "")
+      paste("Peak_Level_Heatmap_", Sys.Date(), ".", input$extPlot54, sep = "")
     },
     content = function(file) {
+      req(values$peakAnno_df, values$filteredDataS, values$DVReady)
+      
       if (input$extPlot54 == "pdf") {
-        pdf(file, width = 8, height = 6)
+        pdf(file, width = 10, height = 7)
       } else if (input$extPlot54 == "png") {
-        png(file, width = 8, height = 6, units = "in", res = 1000)
+        png(file, width = 10, height = 7, units = "in", res = 1000)
       } else {
-        jpeg(file, width = 8, height = 6, units = "in", res = 1000)
+        jpeg(file, width = 10, height = 7, units = "in", res = 1000)
       }
-      sample_cols <- colnames(values$data)[4:ncol(values$data)]
-      summarized_data <- values$peakAnno_df %>%
-        dplyr::select(annotation, all_of(sample_cols)) %>%  
-        mutate(annotation = case_when(
-          grepl("^Promoter", annotation) ~ "Promoter",
-          grepl("^Intron", annotation) ~ "Intron",
-          grepl("^Exon", annotation) ~ "Exon",
-          TRUE ~ annotation
-        )) 
-      summarized_data <- summarized_data %>%
-        group_by(annotation) %>%
-        summarise(across(all_of(sample_cols), sum))
       
-      summarized_data_df <- as.data.frame(summarized_data)
-      rownames(summarized_data_df) <- summarized_data_df$annotation
-      data_for_heatmap <- summarized_data_df %>% dplyr::select(-annotation)
+      on.exit(dev.off(), add = TRUE)
       
-      print(
-        pheatmap(data_for_heatmap,
-                 scale = "row", 
-                 clustering_distance_rows = "euclidean", 
-                 clustering_distance_cols = "euclidean",  
-                 clustering_method = "complete",  
-                 main = "Peak Count in Regions")
+      peakAnno_df <- values$peakAnno_df
+
+      peakAnno_df$peak_id <- paste0(
+        peakAnno_df$seqnames,
+        ":",
+        peakAnno_df$start,
+        "-",
+        peakAnno_df$end
       )
-      dev.off()
+
+      sample_cols <- colnames(values$filteredDataS)
+      norm_cols <- paste0(sample_cols, "_norm")
+      
+      if (all(norm_cols %in% colnames(peakAnno_df))) {
+        heatmap_cols <- norm_cols
+      } else {
+        heatmap_cols <- sample_cols
+      }
+
+      if (values$groupCount == 2) {
+        
+        sig_col <- if ("padj" %in% colnames(peakAnno_df)) "padj" else "pvalue"
+        
+        heatmap_df <- peakAnno_df %>%
+          dplyr::filter(
+            !is.na(.data[[sig_col]]),
+            .data[[sig_col]] <= volcano_params$pCutoff,
+            (
+              log2FoldChange >= volcano_params$FCcutoff2 |
+                log2FoldChange <= -volcano_params$FCcutoff1
+            )
+          )
+        
+        heatmap_df <- heatmap_df %>%
+          dplyr::arrange(
+            .data[[sig_col]],
+            dplyr::desc(abs(log2FoldChange))
+          ) %>%
+          dplyr::slice_head(n = min(100, nrow(.)))
+        
+      } else if (values$groupCount > 2) {
+        
+        omnibus_cutoff <- ifelse(
+          is.null(input$omnibusPadjCutoff),
+          0.05,
+          input$omnibusPadjCutoff
+        )
+        
+        posthoc_cutoff <- ifelse(
+          is.null(input$posthocPadjCutoff),
+          0.05,
+          input$posthocPadjCutoff
+        )
+        
+        heatmap_df <- peakAnno_df %>%
+          dplyr::filter(
+            !is.na(pvalue),
+            !is.na(omnibus_padj),
+            !is.na(posthoc_padj_across_comparisons),
+            pvalue <= volcano_params$pCutoff,
+            omnibus_padj <= omnibus_cutoff,
+            posthoc_padj_across_comparisons <= posthoc_cutoff,
+            (
+              log2FoldChange >= volcano_params$FCcutoff2 |
+                log2FoldChange <= -volcano_params$FCcutoff1
+            )
+          )
+        
+        heatmap_df <- heatmap_df %>%
+          dplyr::arrange(
+            omnibus_padj,
+            posthoc_padj_across_comparisons,
+            pvalue,
+            dplyr::desc(abs(log2FoldChange))
+          ) %>%
+          dplyr::slice_head(n = min(100, nrow(.)))
+      }
+
+      if (nrow(heatmap_df) == 0) {
+        plot.new()
+        text(
+          x = 0.5,
+          y = 0.5,
+          labels = "No differential peaks passed the selected cutoffs",
+          cex = 1.2
+        )
+        return()
+      }
+
+      data_for_heatmap <- as.matrix(heatmap_df[, heatmap_cols, drop = FALSE])
+      mode(data_for_heatmap) <- "numeric"
+      
+      rownames(data_for_heatmap) <- make.unique(heatmap_df$peak_id)
+      colnames(data_for_heatmap) <- gsub("_norm$", "", colnames(data_for_heatmap))
+
+      feature_annotation <- dplyr::case_when(
+        grepl("^Promoter", heatmap_df$annotation) ~ "Promoter",
+        grepl("^Intron", heatmap_df$annotation) ~ "Intron",
+        grepl("^Exon", heatmap_df$annotation) ~ "Exon",
+        grepl("Intergenic", heatmap_df$annotation) ~ "Intergenic",
+        grepl("UTR", heatmap_df$annotation) ~ "UTR",
+        grepl("Downstream", heatmap_df$annotation) ~ "Downstream",
+        TRUE ~ as.character(heatmap_df$annotation)
+      )
+      
+      annotation_row <- data.frame(
+        Feature = feature_annotation
+      )
+      
+      rownames(annotation_row) <- rownames(data_for_heatmap)
+
+      pheatmap(
+        data_for_heatmap,
+        scale = "row",
+        clustering_distance_rows = "euclidean",
+        clustering_distance_cols = "euclidean",
+        clustering_method = "complete",
+        annotation_row = annotation_row,
+        show_rownames = FALSE,
+        main = "Normalized read counts of selected differential peaks"
+      )
     }
   )
 
@@ -4063,8 +4737,7 @@ server <- function(input, output, session) {
       write.csv(as.data.frame(dataToWrite), file, row.names = FALSE)
     }
   )
-  
-  #-----------------------------------------
+
   output$Downloadenrichmenttableup <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Enrichment_Analysis_Up_Genes_", Sys.Date(), ".csv")
@@ -4077,7 +4750,7 @@ server <- function(input, output, session) {
       }
     }
   )
-  
+
   output$Downloadenrichmenttabledown <- downloadHandler(
     filename = function() {
       paste0(input$analysis_type, "_Enrichment_Analysis_Down_Genes_", Sys.Date(), ".csv")
@@ -4400,37 +5073,26 @@ server <- function(input, output, session) {
 
   cleanFunction <- function(fromDataInput) {
     if (fromDataInput){
-      #step1
       values$color_map_list <- list()
-      #step1
       values$coveragePlots <- list()
       output$covplot <- renderUI({ NULL })
       values$profilePlots <- list()
       output$profileplot <- renderUI({ NULL })
-      #step2
       updateTabsetPanel(session, "datapreview", selected = "Before Filtering")
-      #step2
       values$groups <- list()
       values$groupCount <- 0
       updateSelectizeInput(session, "samples", selected = NULL)
       updateTextInput(session, "groupName", value = "")
-      #step3
       updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
-      output$deseqResult2 <- DT::renderDataTable({ NULL })
-      output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
-      #step4
       output$annotationTable <- DT::renderDataTable({ NULL })
       values$peakAnnoReady <- FALSE
-      #step5
       values$DVReady <- FALSE
       output$upgenes_table <- DT::renderDataTable({ NULL })
       output$downgenes_table <- DT::renderDataTable({ NULL })
@@ -4442,11 +5104,9 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "GSEA_downgenelist", value = "")
       updateTextAreaInput(session, "upgenes_list3", value = "")
       updateTextAreaInput(session, "downgenes_list3", value = "")
-      #step6
       output$dynamic_tabs <- renderUI({ NULL })
       output$enrichment_result_table_up <- DT::renderDataTable({ NULL })
       output$enrichment_result_table_down <- DT::renderDataTable({ NULL })
-      #step7
       output$motifEnrichmentTable1 <- DT::renderDataTable({ NULL })
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
@@ -4464,35 +5124,27 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step3]").css("color", "#b1b1b1");
+            $("a[data-value=step4]").css("color", "#b1b1b1");
+            $("a[data-value=step5]").css("color", "#b1b1b1");
+            $("a[data-value=step6]").css("color", "#b1b1b1");
+            $("a[data-value=step7]").css("color", "#b1b1b1");
         });
       ')
     }
   }
-  
+
   clean_filter <- function(fromDataInput) {
     if (fromDataInput){
-      #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
-      output$deseqResult2 <- DT::renderDataTable({ NULL })
-      output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
-      #step4
       output$annotationTable <- DT::renderDataTable({ NULL })
       values$peakAnnoReady <- FALSE
-      #step5
       values$DVReady <- FALSE
       output$upgenes_table <- DT::renderDataTable({ NULL })
       output$downgenes_table <- DT::renderDataTable({ NULL })
@@ -4504,11 +5156,9 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "GSEA_downgenelist", value = "")
       updateTextAreaInput(session, "upgenes_list3", value = "")
       updateTextAreaInput(session, "downgenes_list3", value = "")
-      #step6
       output$dynamic_tabs <- renderUI({ NULL })
       output$enrichment_result_table_up <- DT::renderDataTable({ NULL })
       output$enrichment_result_table_down <- DT::renderDataTable({ NULL })
-      #step7
       output$motifEnrichmentTable1 <- DT::renderDataTable({ NULL })
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
@@ -4521,36 +5171,27 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step3]").css("color", "#b1b1b1");
+            $("a[data-value=step4]").css("color", "#b1b1b1");
+            $("a[data-value=step5]").css("color", "#b1b1b1");
+            $("a[data-value=step6]").css("color", "#b1b1b1");
+            $("a[data-value=step7]").css("color", "#b1b1b1");
         });
       ')
     }
   }
-  
-  #clean
+
   clean_group1 <- function(fromDataInput) {
     if (fromDataInput){
-      #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
-      output$deseqResult2 <- DT::renderDataTable({ NULL })
-      output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
-      #step4
       output$annotationTable <- DT::renderDataTable({ NULL })
       values$peakAnnoReady <- FALSE
-      #step5
       values$DVReady <- FALSE
       output$upgenes_table <- DT::renderDataTable({ NULL })
       output$downgenes_table <- DT::renderDataTable({ NULL })
@@ -4562,11 +5203,9 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "GSEA_downgenelist", value = "")
       updateTextAreaInput(session, "upgenes_list3", value = "")
       updateTextAreaInput(session, "downgenes_list3", value = "")
-      #step6
       output$dynamic_tabs <- renderUI({ NULL })
       output$enrichment_result_table_up <- DT::renderDataTable({ NULL })
       output$enrichment_result_table_down <- DT::renderDataTable({ NULL })
-      #step7
       output$motifEnrichmentTable1 <- DT::renderDataTable({ NULL })
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
@@ -4579,36 +5218,27 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step3]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step3]").css("color", "#b1b1b1"); 
+            $("a[data-value=step4]").css("color", "#b1b1b1");  
+            $("a[data-value=step5]").css("color", "#b1b1b1"); 
+            $("a[data-value=step6]").css("color", "#b1b1b1"); 
+            $("a[data-value=step7]").css("color", "#b1b1b1"); 
         });
       ')
     }
   }
-  
-  #step2_to_step3
+
   clean_group2 <- function(fromDataInput) {
     if (fromDataInput){
-      #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
       output$dynamic_tabs_step3 <- renderUI({ NULL })
-      # output$summaryText <- renderText({ NULL })
       output$deseqResult <- DT::renderDataTable({ NULL })
-      output$deseqResult2 <- DT::renderDataTable({ NULL })
-      output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
-      #step4
       output$annotationTable <- DT::renderDataTable({ NULL })
       values$peakAnnoReady <- FALSE
-      #step5
       values$DVReady <- FALSE
       output$upgenes_table <- DT::renderDataTable({ NULL })
       output$downgenes_table <- DT::renderDataTable({ NULL })
@@ -4620,11 +5250,9 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "GSEA_downgenelist", value = "")
       updateTextAreaInput(session, "upgenes_list3", value = "")
       updateTextAreaInput(session, "downgenes_list3", value = "")
-      #step6
       output$dynamic_tabs <- renderUI({ NULL })
       output$enrichment_result_table_up <- DT::renderDataTable({ NULL })
       output$enrichment_result_table_down <- DT::renderDataTable({ NULL })
-      #step7
       output$motifEnrichmentTable1 <- DT::renderDataTable({ NULL })
       output$motifEnrichmentTable2 <- DT::renderDataTable({ NULL })
       output$motifplot1 <- renderPlot({ NULL })
@@ -4637,26 +5265,21 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step4]").css("color", "#b1b1b1"); 
+            $("a[data-value=step5]").css("color", "#b1b1b1"); 
+            $("a[data-value=step6]").css("color", "#b1b1b1");  
+            $("a[data-value=step7]").css("color", "#b1b1b1");  
         });
       ')
     }
   }
-  
-  #step31
+
   clean_DAR <- function(fromDataInput) {
     if (fromDataInput){
       #step3
-      updateTabsetPanel(session, "analysis_results", selected = "Before Filtering")
-      output$deseqResult2 <- DT::renderDataTable({ NULL })
-      output$filteredResult <- DT::renderDataTable({ NULL })
       if (!is.null(values$deseqResultList)) {
         for (comp_name in names(values$deseqResultList)) {
           output[[paste0("deseqResult_", comp_name)]] <- DT::renderDataTable({ NULL })
-          # output[[paste0("summary_", comp_name)]] <- renderText({ NULL })
         }
       }
       #step4
@@ -4687,14 +5310,19 @@ server <- function(input, output, session) {
       shinyjs::disable("step51")
       shinyjs::disable("step6")
       shinyjs::disable("step7")
-      shinyjs::runjs('
-        $(document).ready(function(){
-            $("a[data-value=step4]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
-        });
-      ')
+      steps_to_gray <- c("step5", "step6", "step7")
+      if (!is.null(values$groupCount) && values$groupCount > 2) {
+        steps_to_gray <- c("step4", steps_to_gray)
+      }
+      js_code <- paste0(
+        "$(document).ready(function(){",
+        paste0(
+          "$('a[data-value=", steps_to_gray, "]').css('color', '#b1b1b1');",
+          collapse = ""
+        ),
+        "});"
+      )
+      shinyjs::runjs(js_code)
     }
   }
   
@@ -4730,9 +5358,9 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step5]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step5]").css("color", "#b1b1b1"); 
+            $("a[data-value=step6]").css("color", "#b1b1b1"); 
+            $("a[data-value=step7]").css("color", "#b1b1b1");  
         });
       ')
     }
@@ -4766,8 +5394,8 @@ server <- function(input, output, session) {
       shinyjs::disable("step7")
       shinyjs::runjs('
         $(document).ready(function(){
-            $("a[data-value=step6]").css("color", "#b1b1b1");  // 设置灰色
-            $("a[data-value=step7]").css("color", "#b1b1b1");  // 设置灰色
+            $("a[data-value=step6]").css("color", "#b1b1b1"); 
+            $("a[data-value=step7]").css("color", "#b1b1b1"); 
         });
       ')
     }

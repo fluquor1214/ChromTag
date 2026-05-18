@@ -110,7 +110,7 @@ ui <- dashboardPage(
         width: 265px;
       }
 
-    .skin-blue .sidebar {      
+    .skin-blue .sidebar {
         position: fixed;
         top: 50px;
         bottom: 0;
@@ -154,7 +154,7 @@ ui <- dashboardPage(
             fluidRow(column(
               12,
               align = "center",
-              shiny::tags$img(src = "workflow1.png", style = "max-height:460px; width:auto;max-width:100%;")
+              shiny::tags$img(src = "workflow1.png", style = "max-height:470px; width:auto;max-width:120%;")
             ))
             
           ),
@@ -296,7 +296,7 @@ ui <- dashboardPage(
                      )
               ),
               column(9,
-                     uiOutput("covplot") # %>% withSpinner()
+                     uiOutput("covplot")
               )
             )
           ),
@@ -336,7 +336,7 @@ ui <- dashboardPage(
                      )
               ),
               column(9,
-                     uiOutput("profileplot") #  %>% withSpinner()
+                     uiOutput("profileplot")
               )
             )
           )
@@ -381,11 +381,20 @@ ui <- dashboardPage(
                          ),
                          div(
                            style = "display:inline-block; vertical-align:middle; margin-left:5px;",
-                           bsButton("thresholdHelp", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button")
+                           bsButton("thresholdHelp", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button"),
+                           bsButton("thresholdTip", label = "", icon = icon("exclamation"), size = "extra-small", class = "tiny-button")
                          ),
                          numericInput("threshold", label = NULL, value = 5),
                          bsPopover(
                            id = "thresholdHelp", 
+                           title = NULL, 
+                           content = "This value represents the minimum total count across all samples for each row. Only rows with a sum of counts greater than this threshold will be retained for further analysis.",
+                           placement = "right", 
+                           trigger = "hover", 
+                           options = list(container = "body")
+                         ),
+                         bsPopover(
+                           id = "thresholdTip", 
                            title = NULL, 
                            content = "This value represents the minimum total count across all samples for each row. Only rows with a sum of counts greater than this threshold will be retained for further analysis.",
                            placement = "right", 
@@ -412,10 +421,10 @@ ui <- dashboardPage(
           shinydashboard::box(
             title = tagList(icon("exchange-alt"), "Sample Grouping"),
             width = 12,
-            #height = 500,
-            solidHeader = F,
+            solidHeader = FALSE,
             status = "primary",
             collapsible = TRUE,
+            
             selectizeInput(
               inputId = "samples", 
               label = "Select Sample(s):", 
@@ -425,12 +434,24 @@ ui <- dashboardPage(
                 plugins = list("remove_button")
               )
             ),
-            textInput("groupName", "Group Label:", value = ""),
+            
+            selectInput(
+              inputId = "groupName",
+              label = "Select Group Label:",
+              choices = c(
+                "Control group" = "Control",
+                "Experimental group" = "Experimental"
+              ),
+              selected = "Control"
+            ),
+            
             actionButton("addGroup", "Add Group"),
             actionButton("clearGroups", "Clear Groups"),
+            
             hr(),
             h4("Current Groups:"),
             verbatimTextOutput("currentGroups"),
+            
             actionButton(
               inputId = "step2_to_step3",
               label = "Submit",
@@ -451,16 +472,26 @@ ui <- dashboardPage(
             helpText(
               div(
                 strong("The Differential Peak Analysis Module"),
-                " performs statistical testing to detect significant differences in peak signal intensity across defined sample groups. Users may tailor the analysis by specifying parameters such as the direction of change, log₂ fold-change cutoff, significance threshold, and p-value adjustment method. The module supports both pairwise and multi-group comparisons, applying model-based differential testing and presenting the results in an interactive tabular format. Following statistical computation, additional user-defined filters can be applied to highlight the most ",
-                strong("biologically meaningful peaks"),
-                ", facilitating focused downstream interpretation and functional analysis.",
+                " performs statistical testing to detect significant differences in peak signal intensity across defined sample groups. The analysis is conducted using a model-based framework, and results are evaluated primarily based on statistical significance with appropriate multiple testing correction. Users may tailor the analysis by specifying parameters such as the direction of change, significance threshold, and p-value adjustment method. The module supports both pairwise and multi-group comparisons, and results are presented in an interactive tabular format for further exploration and interpretation.",
                 style = "font-size:16px;font-style:calibri;color:black;",
                 align = "justify"
               )
             )
           ),
           shinydashboard::box(
-            title = tagList(icon("mouse-pointer"), "Differential Analysis Parameters"),
+            title = tagList(icon("mouse-pointer"), "Differential Analysis Parameters",
+                            bsButton("normalizationtip", label = "", icon = icon("exclamation"), size = "extra-small"),
+                            bsPopover(
+                              id = "normalizationtip", 
+                              title = NULL,
+                              content = paste(
+                                "Differential analysis assumes comparable signal distributions across samples. Ensure appropriate experimental design and data quality before interpreting results."
+                              ),
+                              placement = "right", 
+                              trigger = "hover", 
+                              options = list(container = "body")
+                            )
+            ),
             width = 12,
             solidHeader = FALSE,
             status = "primary",
@@ -698,9 +729,20 @@ ui <- dashboardPage(
                               id = "genecutoffhelp", 
                               title = "Select Significant Genes",
                               content = paste(
-                                "• By adjusting the volcano plot parameters, you can filter the significant genes (displayed as red points) you wish to analyze, then submit your selection. <br><br>",
-                                "• The volcano plot shows genes that are significantly different between the two groups or selected comparisons. The title of the volcano plot indicates which groups are being compared (e.g., Group1 vs Group2). <br><br>",
-                                "• Genes located further from the origin (with larger absolute log2FC and lower p-values) are considered more significant. Peaks with a log2FC greater than 0 have higher expression in the second group, while peaks with a log2FC less than 0 have higher expression in the first group. <br><br>"
+                                "• By adjusting the volcano plot parameters, you can filter the significant peaks (displayed as red points) you wish to analyze, then submit your selection. <br><br>",
+                                "• Peaks located further from the origin (with larger absolute log2FC and lower p-values) are considered more significant. Peaks with a log2FC greater than 0 have higher expression in the second group, while peaks with a log2FC less than 0 have higher expression in the first group. <br><br>"
+                              ),
+                              placement = "right", 
+                              trigger = "hover", 
+                              options = list(container = "body")
+                            ),
+                            bsButton("thresholdstip2", label = "", icon = icon("exclamation"), size = "extra-small"),
+                            bsPopover(
+                              id = "thresholdstip2", 
+                              title = "Tip",
+                              content = paste(
+                                "• Thresholds (adjusted p-value and log₂ fold change) should be defined based on data-driven considerations and should not be adjusted post hoc to obtain significant results. <br><br>",
+                                "• The MA plot can be used to assess normalization quality. Strong asymmetry may indicate potential issues with data comparability."
                               ),
                               placement = "right", 
                               trigger = "hover", 
@@ -715,32 +757,50 @@ ui <- dashboardPage(
                         tabPanel(
                           tagList(icon("chart-area"), "Volcano Plot"),
                           fluidRow(
-                            column(3,
-                                   fluidRow(column(12,
-                                                   numericInput("pCutoff", "–log10(p-value) Cutoff", value = 2),
-                                                   numericInput("FCcutoff2", "Log2FC Threshold (Positive)", value = 14),
-                                                   numericInput("FCcutoff1", "Log2FC Threshold (Negative)", value = 5),
-                                                   numericInput("pointSize", "Point Size", value = 3.0),
-                                                   numericInput("labSize", "Label Size", value = 4.0),
-                                                   actionButton(
-                                                     inputId = "step51",
-                                                     label = "Submit",
-                                                     icon = icon("check")
-                                                   ),
-                                                   br(),
-                                                   radioButtons(
-                                                     inputId = "extPlot51",
-                                                     label = helpText("Output Format"),
-                                                     choices = c("PNG" = "png", "PDF" = "pdf", "JPEG" = "jpeg"),
-                                                     inline = TRUE
-                                                   ),
-                                                   downloadButton("Download_Volcano", "Download")
-                                   )
-                                   )
+                            column(
+                              3,
+                              fluidRow(
+                                column(
+                                  12,
+                                  numericInput("pCutoff", "–log10(padj) Cutoff", value = 1.3),
+                                  conditionalPanel(
+                                    condition = "output.isMultiGroup == true",
+                                    numericInput(
+                                      "omnibusPadjCutoff",
+                                      "Omnibus adjusted p-value cutoff",
+                                      value = 0.05
+                                    ),
+                                    numericInput(
+                                      "posthocPadjCutoff",
+                                      "Post-hoc adjusted p-value cutoff across comparisons",
+                                      value = 0.05
+                                    )
+                                  ),
+                                  numericInput("FCcutoff2", "Log2FC Threshold (Positive)", value = 1),
+                                  numericInput("FCcutoff1", "Log2FC Threshold (Negative)", value = 1),
+                                  numericInput("pointSize", "Point Size", value = 3.0),
+                                  numericInput("labSize", "Label Size", value = 4.0),
+                                  actionButton(
+                                    inputId = "step51",
+                                    label = "Submit",
+                                    icon = icon("check")
+                                  ),
+                                  br(),
+                                  radioButtons(
+                                    inputId = "extPlot51",
+                                    label = helpText("Output Format"),
+                                    choices = c("PNG" = "png", "PDF" = "pdf", "JPEG" = "jpeg"),
+                                    inline = TRUE
+                                  ),
+                                  downloadButton("Download_Volcano", "Download")
+                                )
+                              )
                             ),
-                            column(9,
-                                   plotOutput("volcanoplot", width = "100%") %>% withSpinner(),
-                            ))
+                            column(
+                              9,
+                              plotOutput("volcanoplot", width = "100%") %>% withSpinner()
+                            )
+                          )
                         ),
                         # MA Tab
                         tabPanel(
@@ -1198,7 +1258,7 @@ ui <- dashboardPage(
       HTML(paste0(
         "</br><p style = 'text-align: center; font-size: 1.0em; color: black; line-height: 10%;'>",
         "<b>Created by</b>: XuLabGDPU | ",
-        "<b>Last update</b>: 30/11/2025",
+        "<b>Last update</b>: 18/5/2026",
         "</p>",
         "</br><p style = 'text-align: center; font-size: 1.0em; color: black; line-height: 10%;'>",
         "<b>Address</b>: No. 280, Outer Ring East Road, Panyu District, Guangzhou City, Guangdong Province, China | ",
