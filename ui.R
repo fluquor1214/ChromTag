@@ -971,7 +971,7 @@ ui <- dashboardPage(
             solidHeader = F,
             status = "primary",
             collapsible = TRUE,
-            fluidRow(column(4,
+            fluidRow(column(3,
                             selectInput("analysis_type", "Analysis Type:",
                                         choices = c("GO", "KEGG", "GSEA"),
                                         selected = "GO"),
@@ -993,7 +993,7 @@ ui <- dashboardPage(
                                            value = 0.05, min = 0, max = 1, step = 0.01)
                             )
             ),
-            column(4,
+            column(3,
                    conditionalPanel(
                      condition = "input.analysis_type != 'GSEA'",
                      textAreaInput(
@@ -1003,7 +1003,7 @@ ui <- dashboardPage(
                      )
                    )
             ),
-            column(4,
+            column(3,
                    conditionalPanel(
                      condition = "input.analysis_type != 'GSEA'",
                      textAreaInput(
@@ -1013,15 +1013,67 @@ ui <- dashboardPage(
                      )
                    )
             ),
-            column(1,
+            column(3,
+                   conditionalPanel(
+                     condition = "input.analysis_type != 'GSEA'",
+                     div(
+                       style = "display:inline-block; vertical-align:middle;",
+                       shiny::tags$strong("Mixed-direction Genes List")
+                     ),
+                     div(
+                       style = "display:inline-block; vertical-align:middle; margin-left:5px;",
+                       bsButton("mixed_direction_genes_list_help", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button")
+                     ),
+                     textAreaInput(
+                       "mixed_direction_genes_list",
+                       NULL,
+                       rows = 10
+                     ),
+                     bsPopover(
+                       id = "mixed_direction_genes_list_help", 
+                       title = NULL, 
+                       content = "Genes in this list are linked to both increased-signal and decreased-signal differential peaks. Because their peak-level signals show conflicting directions, they are excluded from the direction-specific gene lists used for GO/KEGG ORA and from the default ranked gene list used for preranked GSEA. This list is provided for user inspection and transparency.",
+                       placement = "left", 
+                       trigger = "hover", 
+                       options = list(container = "body")
+                     )
+                   )
             ),
-            column(6,
+            # column(2,
+            # ),
+            column(4,
                    conditionalPanel(
                      condition = "input.analysis_type == 'GSEA'",
                      textAreaInput(
                        "GSEA_genelist",
                        "Upregulated and Downregulated Gene Lists",
                        rows = 10
+                     )
+                   )
+            ),
+            column(4,
+                   conditionalPanel(
+                     condition = "input.analysis_type == 'GSEA'",
+                     div(
+                       style = "display:inline-block; vertical-align:middle;",
+                       shiny::tags$strong("Mixed-direction Genes List")
+                     ),
+                     div(
+                       style = "display:inline-block; vertical-align:middle; margin-left:5px;",
+                       bsButton("mixed_direction_genes_list_help2", label = "", icon = icon("question"), size = "extra-small", class = "tiny-button")
+                     ),
+                     textAreaInput(
+                       "mixed_direction_genes_list2",
+                       NULL,
+                       rows = 10
+                     ),
+                     bsPopover(
+                       id = "mixed_direction_genes_list_help2", 
+                       title = NULL, 
+                       content = "Genes in this list are linked to both increased-signal and decreased-signal differential peaks. Because their peak-level signals show conflicting directions, they are excluded from the direction-specific gene lists used for GO/KEGG ORA and from the default ranked gene list used for preranked GSEA. This list is provided for user inspection and transparency.",
+                       placement = "left", 
+                       trigger = "hover", 
+                       options = list(container = "body")
                      )
                    )
             ),

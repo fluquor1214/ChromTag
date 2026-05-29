@@ -1644,12 +1644,24 @@ server <- function(input, output, session) {
       
       red_peaks_upgenes <- unique(red_peaks_up$SYMBOL)
       red_peaks_downgenes <- unique(red_peaks_down$SYMBOL)
-      
+
       red_peaks_upgenes <- red_peaks_upgenes[!is.na(red_peaks_upgenes)]
       red_peaks_downgenes <- red_peaks_downgenes[!is.na(red_peaks_downgenes)]
       
+      # Mixed-direction gene handling for direction-specific ORA
+      # Genes linked to both increased- and decreased-signal peaks are excluded
+      # from both ORA gene lists to avoid ambiguous directional interpretation.
+      mixed_direction_genes <- intersect(red_peaks_upgenes, red_peaks_downgenes)
+      red_peaks_upgenes2 <- setdiff(red_peaks_upgenes, mixed_direction_genes)
+      red_peaks_downgenes2 <- setdiff(red_peaks_downgenes, mixed_direction_genes)
+      values$mixed_direction_genes <- mixed_direction_genes
+      
       red_peaks <- rbind(red_peaks_up, red_peaks_down)
-      red_peaks_genes <- union(red_peaks_upgenes, red_peaks_downgenes)
+      # red_peaks_genes <- union(red_peaks_upgenes, red_peaks_downgenes)
+      red_peaks_genes <- setdiff(
+        union(red_peaks_upgenes, red_peaks_downgenes),
+        mixed_direction_genes
+      )
       
       values$red_peaks_up <- red_peaks_up
       values$red_peaks_down <- red_peaks_down
@@ -1660,13 +1672,13 @@ server <- function(input, output, session) {
       
       red_peaks_up_filter <- red_peaks_up[grepl("^chr[0-9XY]+$", red_peaks_up$seqnames), ]
       red_peaks_down_filter <- red_peaks_down[grepl("^chr[0-9XY]+$", red_peaks_down$seqnames), ]
-      
+
       uppeak_strings <- red_peaks_up_filter %>%
-        arrange(desc(log2FoldChange)) %>%  
+        arrange(pvalue, desc(abs(log2FoldChange))) %>%  
         head(min(200, nrow(red_peaks_up_filter)))
       
       downpeak_strings <- red_peaks_down_filter %>%
-        arrange(log2FoldChange) %>%  
+        arrange(pvalue, desc(abs(log2FoldChange))) %>%  
         head(min(200, nrow(red_peaks_down_filter)))
       
       uppeak_strings <- paste(
@@ -1763,7 +1775,7 @@ server <- function(input, output, session) {
           updateTextAreaInput(
             session,
             "upgenes_list2",
-            value = paste(red_peaks_upgenes, collapse = "\n")
+            value = paste(red_peaks_upgenes2, collapse = "\n")
           )
         } else {
           updateTextAreaInput(
@@ -1779,13 +1791,45 @@ server <- function(input, output, session) {
           updateTextAreaInput(
             session,
             "downgenes_list2",
-            value = paste(red_peaks_downgenes, collapse = "\n")
+            value = paste(red_peaks_downgenes2, collapse = "\n")
           )
         } else {
           updateTextAreaInput(
             session,
             "downgenes_list2",
             value = "No downregulated genes"
+          )
+        }
+      })
+      
+      observe({
+        if (length(mixed_direction_genes) > 0) {
+          updateTextAreaInput(
+            session,
+            "mixed_direction_genes_list",
+            value = paste(mixed_direction_genes, collapse = "\n")
+          )
+        } else {
+          updateTextAreaInput(
+            session,
+            "mixed_direction_genes_list",
+            value = "No mixed direction genes"
+          )
+        }
+      })
+      
+      observe({
+        if (length(mixed_direction_genes) > 0) {
+          updateTextAreaInput(
+            session,
+            "mixed_direction_genes_list2",
+            value = paste(mixed_direction_genes, collapse = "\n")
+          )
+        } else {
+          updateTextAreaInput(
+            session,
+            "mixed_direction_genes_list2",
+            value = "No mixed direction genes"
           )
         }
       })
@@ -2094,13 +2138,13 @@ server <- function(input, output, session) {
       labs(title = "PCA Plot", x = "PC1", y = "PC2") +
       theme(legend.position = "top")
   })
-  
+
   # Tab 4: Heatmap
   output$heatmapPlot <- renderPlot({
     req(values$peakAnno_df, values$filteredDataS, values$DVReady)
     
     peakAnno_df <- values$peakAnno_df
-
+    
     peakAnno_df$peak_id <- paste0(
       peakAnno_df$seqnames,
       ":",
@@ -2108,7 +2152,7 @@ server <- function(input, output, session) {
       "-",
       peakAnno_df$end
     )
-
+    
     sample_cols <- colnames(values$filteredDataS)
     norm_cols <- paste0(sample_cols, "_norm")
     
@@ -2117,23 +2161,33 @@ server <- function(input, output, session) {
     } else {
       heatmap_cols <- sample_cols
     }
-
+    
     if (values$groupCount == 2) {
       
-      sig_col <- if ("padj" %in% colnames(peakAnno_df)) "padj" else "pvalue"
+      validate(
+        need(
+          "padj" %in% colnames(peakAnno_df),
+          "Two-group heatmap requires the column 'padj'. Please run differential analysis first."
+        ),
+        need(
+          "log2FoldChange" %in% colnames(peakAnno_df),
+          "The column 'log2FoldChange' is missing."
+        )
+      )
       
       heatmap_df <- peakAnno_df %>%
         dplyr::filter(
-          !is.na(.data[[sig_col]]),
-          .data[[sig_col]] <= volcano_params$pCutoff,
+          !is.na(padj),
+          padj <= volcano_params$pCutoff,
           (
             log2FoldChange >= volcano_params$FCcutoff2 |
               log2FoldChange <= -volcano_params$FCcutoff1
           )
         )
       
+      # Selected peaks are ranked by adjusted p-value only.
       heatmap_df <- heatmap_df %>%
-        dplyr::arrange(.data[[sig_col]], dplyr::desc(abs(log2FoldChange))) %>%
+        dplyr::arrange(padj) %>%
         dplyr::slice_head(n = min(100, nrow(.)))
       
     } else if (values$groupCount > 2) {
@@ -2183,16 +2237,12 @@ server <- function(input, output, session) {
           )
         )
       
+      # For multi-group analysis, selected peaks are ranked by omnibus adjusted p-value only.
       heatmap_df <- heatmap_df %>%
-        dplyr::arrange(
-          omnibus_padj,
-          posthoc_padj_across_comparisons,
-          pvalue,
-          dplyr::desc(abs(log2FoldChange))
-        ) %>%
+        dplyr::arrange(omnibus_padj) %>%
         dplyr::slice_head(n = min(100, nrow(.)))
     }
-
+    
     if (nrow(heatmap_df) == 0) {
       plot.new()
       text(
@@ -2203,13 +2253,13 @@ server <- function(input, output, session) {
       )
       return()
     }
-
+    
     data_for_heatmap <- as.matrix(heatmap_df[, heatmap_cols, drop = FALSE])
     mode(data_for_heatmap) <- "numeric"
     
     rownames(data_for_heatmap) <- make.unique(heatmap_df$peak_id)
     colnames(data_for_heatmap) <- gsub("_norm$", "", colnames(data_for_heatmap))
-
+    
     feature_annotation <- dplyr::case_when(
       grepl("^Promoter", heatmap_df$annotation) ~ "Promoter",
       grepl("^Intron", heatmap_df$annotation) ~ "Intron",
@@ -2225,10 +2275,12 @@ server <- function(input, output, session) {
     )
     
     rownames(annotation_row) <- rownames(data_for_heatmap)
-
+    
     pheatmap(
       data_for_heatmap,
       scale = "row",
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
       clustering_distance_rows = "euclidean",
       clustering_distance_cols = "euclidean",
       clustering_method = "complete",
@@ -2237,6 +2289,7 @@ server <- function(input, output, session) {
       main = "Normalized read counts of selected differential peaks"
     )
   })
+  
   
   #-------------------enrich-------------------
   observeEvent(input$step6, {
@@ -2583,6 +2636,8 @@ server <- function(input, output, session) {
                       selected = "H"),
           numericInput("GSEA_pvalue_cutoff", "p-value Cutoff (GSEA):",
                        value = 0.1, min = 0, max = 1, step = 0.01)
+          # br(),
+          # br()
         )
       } else if (input$species == "Mouse" && input$Selectdata != "Example dataset") {
         tagList(
@@ -2597,6 +2652,8 @@ server <- function(input, output, session) {
                       selected = "MH"),
           numericInput("GSEA_pvalue_cutoff", "GSEA p-value Cutoff:",
                        value = 0.1, min = 0, max = 1, step = 0.01)
+          # br(),
+          # br()
         )
       } else if (input$species == "Drosophila" && input$Selectdata != "Example dataset") {
         tagList(
@@ -2715,52 +2772,123 @@ server <- function(input, output, session) {
         } else {
           GSEA_genelist_enrichment <- unlist(strsplit(GSEA_genelist_enrichment, "\n"))
           GSEA_genelist_enrichment <- unique(GSEA_genelist_enrichment)
-          geneList_gsea <- values$peakAnno_df[values$peakAnno_df$SYMBOL %in% GSEA_genelist_enrichment, c("SYMBOL", "log2FoldChange")]
-          geneList_gsea <- geneList_gsea[!is.na(geneList_gsea$SYMBOL) & !is.na(geneList_gsea$log2FoldChange), ]
+
+          geneList_gsea <- values$red_peaks[
+            values$red_peaks$SYMBOL %in% GSEA_genelist_enrichment,
+            c("SYMBOL", "log2FoldChange", "pvalue")
+          ]
+          
+          geneList_gsea <- geneList_gsea[
+            !is.na(geneList_gsea$SYMBOL) &
+              !is.na(geneList_gsea$log2FoldChange),
+          ]
+          
+          # Code-level safeguard:
+          # exclude mixed-direction genes from the default preranked GSEA input
+          if (!is.null(values$mixed_direction_genes)) {
+            geneList_gsea <- geneList_gsea[
+              !(geneList_gsea$SYMBOL %in% values$mixed_direction_genes),
+            ]
+          }
+          
           geneList_gsea <- geneList_gsea %>%
+            mutate(rank_pvalue = ifelse(is.na(pvalue), Inf, pvalue)) %>%
             group_by(SYMBOL) %>%
-            summarise(log2FoldChange = mean(log2FoldChange)) %>%
+            arrange(rank_pvalue, desc(abs(log2FoldChange)), .by_group = TRUE) %>%
+            dplyr::slice_head(n = 1) %>%
+            ungroup() %>%
             arrange(desc(log2FoldChange))
+          
           geneList_vector <- geneList_gsea$log2FoldChange
           names(geneList_vector) <- as.character(geneList_gsea$SYMBOL)
           print(geneList_vector)
+          
         }
 
       }else if(!is.null(input$species) && input$species == "Drosophila"){
         if (length(GSEA_genelist_enrichment) == 0 || GSEA_genelist_enrichment == "No significant genes") {
-          geneList_vector <- NULL
+          geneList_vector1 <- NULL
+          geneList_vector2 <- NULL
         } else {
           GSEA_genelist_enrichment <- unlist(strsplit(GSEA_genelist_enrichment, "\n"))
           GSEA_genelist_enrichment <- unique(GSEA_genelist_enrichment)
-          geneList_gsea <- values$peakAnno_df[values$peakAnno_df$SYMBOL %in% GSEA_genelist_enrichment, c("SYMBOL", "log2FoldChange")]
-          geneList_gsea <- geneList_gsea[!is.na(geneList_gsea$SYMBOL) & !is.na(geneList_gsea$log2FoldChange), ]
           
-          gene_conversion1 <- bitr(geneList_gsea$SYMBOL, 
-                                   fromType = "SYMBOL", 
-                                   toType = "ENTREZID", 
-                                   OrgDb = values$annoDb)
-          geneList_gsea1 <- merge(geneList_gsea, gene_conversion1, by = "SYMBOL")
-          geneList_gsea1 <- geneList_gsea1 %>%
-            group_by(ENTREZID) %>%
-            summarise(log2FoldChange = mean(log2FoldChange)) %>%
-            arrange(desc(log2FoldChange))
-          geneList_vector1 <- geneList_gsea1$log2FoldChange
-          names(geneList_vector1) <- as.character(geneList_gsea1$ENTREZID)
-          print(geneList_vector1)
+          geneList_gsea <- values$red_peaks[
+            values$red_peaks$SYMBOL %in% GSEA_genelist_enrichment,
+            c("SYMBOL", "log2FoldChange", "pvalue")
+          ]
           
-          gene_conversion2 <- bitr(geneList_gsea$SYMBOL, 
-                                   fromType = "SYMBOL", 
-                                   toType = "FLYBASECG", 
-                                   OrgDb = values$annoDb)
-          geneList_gsea2 <- merge(geneList_gsea, gene_conversion2, by = "SYMBOL")
-          geneList_gsea2 <- geneList_gsea2 %>%
-            group_by(FLYBASECG) %>%
-            summarise(log2FoldChange = mean(log2FoldChange)) %>%
-            arrange(desc(log2FoldChange))
-          geneList_vector2 <- geneList_gsea2$log2FoldChange
-          geneList_gsea2$FLYBASECG <- paste0("Dmel_", geneList_gsea2$FLYBASECG)
-          names(geneList_vector2) <- as.character(geneList_gsea2$FLYBASECG)
-          print(geneList_vector2)
+          geneList_gsea <- geneList_gsea[
+            !is.na(geneList_gsea$SYMBOL) &
+              !is.na(geneList_gsea$log2FoldChange),
+          ]
+          
+          # Code-level safeguard:
+          # exclude mixed-direction genes from the default preranked GSEA input
+          if (!is.null(values$mixed_direction_genes)) {
+            geneList_gsea <- geneList_gsea[
+              !(geneList_gsea$SYMBOL %in% values$mixed_direction_genes),
+            ]
+          }
+          
+          # Collapse multiple peaks assigned to the same SYMBOL.
+          # The representative peak is selected by the smallest p-value,
+          # with absolute log2 fold change used as a secondary tie-breaker.
+          geneList_gsea <- geneList_gsea %>%
+            mutate(rank_pvalue = ifelse(is.na(pvalue), Inf, pvalue)) %>%
+            group_by(SYMBOL) %>%
+            arrange(rank_pvalue, desc(abs(log2FoldChange)), .by_group = TRUE) %>%
+            dplyr::slice_head(n = 1) %>%
+            ungroup()
+          
+          if (nrow(geneList_gsea) == 0) {
+            geneList_vector1 <- NULL
+            geneList_vector2 <- NULL
+          } else {
+            
+            gene_conversion1 <- bitr(
+              geneList_gsea$SYMBOL, 
+              fromType = "SYMBOL", 
+              toType = "ENTREZID", 
+              OrgDb = values$annoDb
+            )
+            
+            geneList_gsea1 <- merge(geneList_gsea, gene_conversion1, by = "SYMBOL")
+            
+            geneList_gsea1 <- geneList_gsea1 %>%
+              mutate(rank_pvalue = ifelse(is.na(pvalue), Inf, pvalue)) %>%
+              group_by(ENTREZID) %>%
+              arrange(rank_pvalue, desc(abs(log2FoldChange)), .by_group = TRUE) %>%
+              dplyr::slice_head(n = 1) %>%
+              ungroup() %>%
+              arrange(desc(log2FoldChange))
+            
+            geneList_vector1 <- geneList_gsea1$log2FoldChange
+            names(geneList_vector1) <- as.character(geneList_gsea1$ENTREZID)
+            print(geneList_vector1)
+            
+            gene_conversion2 <- bitr(
+              geneList_gsea$SYMBOL, 
+              fromType = "SYMBOL", 
+              toType = "FLYBASECG", 
+              OrgDb = values$annoDb
+            )
+            
+            geneList_gsea2 <- merge(geneList_gsea, gene_conversion2, by = "SYMBOL")
+            
+            geneList_gsea2 <- geneList_gsea2 %>%
+              mutate(rank_pvalue = ifelse(is.na(pvalue), Inf, pvalue)) %>%
+              group_by(FLYBASECG) %>%
+              arrange(rank_pvalue, desc(abs(log2FoldChange)), .by_group = TRUE) %>%
+              dplyr::slice_head(n = 1) %>%
+              ungroup() %>%
+              arrange(desc(log2FoldChange))
+            
+            geneList_vector2 <- geneList_gsea2$log2FoldChange
+            geneList_gsea2$FLYBASECG <- paste0("Dmel_", geneList_gsea2$FLYBASECG)
+            names(geneList_vector2) <- as.character(geneList_gsea2$FLYBASECG)
+            print(geneList_vector2)
+          }
         }
       }
       
